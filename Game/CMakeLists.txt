@@ -15,4 +15,15 @@ target_compile_options(Game PRIVATE
     /MP
 )
 
-set_target_properties(Game PROPERTIES OUTPUT_NAME "SlopGame")
+set_target_properties(Game PROPERTIES
+    OUTPUT_NAME "SlopGame"
+    VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:Game>"
+)
+
+# Copy Assets next to the exe after every build so shaders are always reachable.
+add_custom_command(TARGET Game POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Assets"
+        "$<TARGET_FILE_DIR:Game>/Assets"
+    COMMENT "Copying Assets to output directory"
+)
