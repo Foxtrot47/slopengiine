@@ -4,6 +4,8 @@
 #include <wrl/client.h>
 #include "Engine/Core/Engine.h"
 #include "Engine/Core/Logger.h"
+#include "Engine/Renderer/VertexBuffer.h"
+#include "Engine/Renderer/IndexBuffer.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -20,16 +22,16 @@ public:
     {
         ID3D11Device* device = GetRenderer().GetDevice();
 
-        // ---- Compile shaders ----
+        // ---- Shaders ----
         ComPtr<ID3DBlob> vsBlob, psBlob, errBlob;
 
-        UINT compileFlags = D3DCOMPILE_ENABLE_STRICTNESS;
+        UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
 #ifdef SE_DEBUG
-        compileFlags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+        flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #endif
 
         HRESULT hr = D3DCompileFromFile(L"Assets/Shaders/Triangle.hlsl",
-            nullptr, nullptr, "VS_Main", "vs_5_0", compileFlags, 0, &vsBlob, &errBlob);
+            nullptr, nullptr, "VS_Main", "vs_5_0", flags, 0, &vsBlob, &errBlob);
         if (FAILED(hr))
         {
             if (errBlob) SE_LOG_ERROR("VS: %s", (char*)errBlob->GetBufferPointer());
@@ -37,7 +39,7 @@ public:
         }
 
         hr = D3DCompileFromFile(L"Assets/Shaders/Triangle.hlsl",
-            nullptr, nullptr, "PS_Main", "ps_5_0", compileFlags, 0, &psBlob, &errBlob);
+            nullptr, nullptr, "PS_Main", "ps_5_0", flags, 0, &psBlob, &errBlob);
         if (FAILED(hr))
         {
             if (errBlob) SE_LOG_ERROR("PS: %s", (char*)errBlob->GetBufferPointer());
@@ -52,30 +54,31 @@ public:
         // ---- Input layout ----
         D3D11_INPUT_ELEMENT_DESC layoutDesc[] =
         {
-            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-            { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT,  0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,   0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         };
         SE_HR(device->CreateInputLayout(layoutDesc, 2,
             vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_layout));
 
-        // ---- Vertex buffer (NDC coords, no projection needed yet) ----
+        // ---- Quad geometry ----
+        //  0----1
+        //  |  / |
+        //  | /  |
+        //  2----3
         Vertex verts[] =
         {
-            {  0.0f,  0.5f, 0.0f,   1.0f, 0.3f, 0.3f, 1.0f },  // top    — red
-            {  0.5f, -0.5f, 0.0f,   0.3f, 1.0f, 0.3f, 1.0f },  // right  — green
-            { -0.5f, -0.5f, 0.0f,   0.3f, 0.3f, 1.0f, 1.0f },  // left   — blue
+            { -0.5f,  0.5f, 0.0f,   1.0f, 0.3f, 0.3f, 1.0f },  // 0 top-left     red
+            {  0.5f,  0.5f, 0.0f,   0.3f, 1.0f, 0.3f, 1.0f },  // 1 top-right    green
+            { -0.5f, -0.5f, 0.0f,   0.3f, 0.3f, 1.0f, 1.0f },  // 2 bottom-left  blue
+            {  0.5f, -0.5f, 0.0f,   1.0f, 1.0f, 0.3f, 1.0f },  // 3 bottom-right yellow
         };
 
-        D3D11_BUFFER_DESC bd  = {};
-        bd.Usage              = D3D11_USAGE_IMMUTABLE;
-        bd.ByteWidth          = sizeof(verts);
-        bd.BindFlags          = D3D11_BIND_VERTEX_BUFFER;
+        uint32_t indices[] = { 0, 1, 2,   1, 3, 2 };
 
-        D3D11_SUBRESOURCE_DATA init = {};
-        init.pSysMem = verts;
-        SE_HR(device->CreateBuffer(&bd, &init, &m_vb));
+        if (!m_vb.Create(device, verts, sizeof(verts), sizeof(Vertex))) return false;
+        if (!m_ib.Create(device, indices, 6))                           return false;
 
-        SE_LOG_INFO("Triangle ready");
+        SE_LOG_INFO("Quad ready");
         return true;
     }
 
@@ -87,20 +90,21 @@ protected:
         ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         ctx->IASetInputLayout(m_layout.Get());
 
-        UINT stride = sizeof(Vertex), offset = 0;
-        ctx->IASetVertexBuffers(0, 1, m_vb.GetAddressOf(), &stride, &offset);
+        m_vb.Bind(ctx);
+        m_ib.Bind(ctx);
 
         ctx->VSSetShader(m_vs.Get(), nullptr, 0);
         ctx->PSSetShader(m_ps.Get(), nullptr, 0);
 
-        ctx->Draw(3, 0);
+        ctx->DrawIndexed(m_ib.GetCount(), 0, 0);
     }
 
 private:
     ComPtr<ID3D11VertexShader> m_vs;
     ComPtr<ID3D11PixelShader>  m_ps;
     ComPtr<ID3D11InputLayout>  m_layout;
-    ComPtr<ID3D11Buffer>       m_vb;
+    SE::VertexBuffer           m_vb;
+    SE::IndexBuffer            m_ib;
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
