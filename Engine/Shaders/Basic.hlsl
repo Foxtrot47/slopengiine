@@ -11,12 +11,14 @@ SamplerState g_sampler : register(s0);
 struct VSIn
 {
     float3 Position : POSITION;
+    float3 Normal   : NORMAL;
     float2 TexCoord : TEXCOORD;
 };
 
 struct PSIn
 {
     float4 Position : SV_POSITION;
+    float3 Normal   : NORMAL;
     float2 TexCoord : TEXCOORD;
 };
 
@@ -28,6 +30,7 @@ PSIn VS_Main(VSIn input)
     pos             = mul(pos, View);
     pos             = mul(pos, Projection);
     output.Position = pos;
+    output.Normal   = input.Normal;
     output.TexCoord = input.TexCoord;
     return output;
 }

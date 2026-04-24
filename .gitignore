@@ -1,9 +1,11 @@
 build/
 out/
 .vs/
+vcpkg_installed/
 *.user
 *.suo
 *.sdf
 *.VC.db
 *.VC.opendb
 CMakeSettings.json
+slopengine.log
