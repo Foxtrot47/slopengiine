@@ -137,7 +137,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | # | Milestone |
 |---|---|
 | M17 | ~~Blinn-Phong per-pixel lighting; directional light~~ ✓ |
-| M18 | Point lights (up to 8, cbuffer array) |
+| M18 | ~~Point lights (up to 8, cbuffer array)~~ ✓ |
 | M19 | Specular maps |
 | M20 | Normal maps (tangent-space, TBN construction in VS) |
 | M21 | Material struct (albedo, roughness, metallic — PBR-ready layout) |
@@ -146,10 +146,10 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 
 | # | Milestone |
 |---|---|
-| M21 | Entity/component system (no ECS framework; hand-rolled, simple) |
-| M22 | Scene graph; parent-child transforms |
-| M23 | Camera component; arcball + FPS controller |
-| M24 | Asset manager (path-keyed cache, ref-counted handles) |
+| M22 | Entity/component system (no ECS framework; hand-rolled, simple) |
+| M23 | Scene graph; parent-child transforms |
+| M24 | Camera component; arcball + FPS controller |
+| M25 | Asset manager (path-keyed cache, ref-counted handles) |
 
 ### Phase 6 — Audio
 
