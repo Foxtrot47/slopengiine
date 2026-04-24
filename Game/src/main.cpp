@@ -81,12 +81,18 @@ protected:
         float t = static_cast<float>(GetClock().GetTotalTime());
 
         // ---- Debug panel ----
+        const SE::InputManager& input = GetInput();
         ImGui::Begin("Scene");
         ImGui::Text("%.1f fps  |  %.2f ms",
                     GetClock().GetFPS(), GetClock().GetDeltaTime() * 1000.0f);
         ImGui::Separator();
         ImGui::SliderFloat("Scale",     &m_scale,    0.001f, 0.1f,  "%.4f");
         ImGui::SliderFloat("Rot Speed", &m_rotSpeed, 0.0f,   3.0f);
+        ImGui::Separator();
+        ImGui::Text("Mouse delta  %+d  %+d", input.GetMouseDeltaX(), input.GetMouseDeltaY());
+        ImGui::Text("WASD  %d %d %d %d",
+            input.IsKeyDown('W'), input.IsKeyDown('A'),
+            input.IsKeyDown('S'), input.IsKeyDown('D'));
         ImGui::End();
 
         XMMATRIX model = XMMatrixScaling(m_scale, m_scale, m_scale)

@@ -30,6 +30,13 @@ bool Engine::Initialize(const WindowDesc& windowDesc)
         return false;
     }
 
+    m_window.SetInputHook(InputManager::WndProcHandler);
+    if (!m_input.Init(m_window.GetHandle()))
+    {
+        SE_LOG_FATAL("Failed to initialise InputManager");
+        return false;
+    }
+
     SE_LOG_INFO("Engine initialised — %ux%u", windowDesc.width, windowDesc.height);
     return true;
 }
@@ -40,8 +47,12 @@ void Engine::Run()
 
     float fpsTimer = 0.0f;
 
-    while (m_window.PumpMessages())
+    while (true)
     {
+        // Clear one-shot input states before pumping new messages.
+        m_input.NewFrame();
+        if (!m_window.PumpMessages()) break;
+
         m_clock.Tick();
 
         m_renderer.BeginFrame(0.1f, 0.15f, 0.25f);

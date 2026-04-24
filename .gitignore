@@ -8,4 +8,4 @@ vcpkg_installed/
 *.VC.db
 *.VC.opendb
 CMakeSettings.json
-slopengine.log
+FoxEngine.log
