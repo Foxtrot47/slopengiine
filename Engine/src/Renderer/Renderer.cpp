@@ -103,6 +103,46 @@ bool Renderer::Initialize(HWND hwnd, uint32_t width, uint32_t height)
     return true;
 }
 
+void Renderer::Resize(uint32_t width, uint32_t height)
+{
+    if (width == 0 || height == 0) return;
+
+    m_context->OMSetRenderTargets(0, nullptr, nullptr);
+    m_rtv.Reset();
+    m_dsv.Reset();
+    m_depthTex.Reset();
+
+    SE_HR(m_swapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0));
+
+    ComPtr<ID3D11Texture2D> backBuffer;
+    SE_HR(m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer)));
+    SE_HR(m_device->CreateRenderTargetView(backBuffer.Get(), nullptr, &m_rtv));
+
+    D3D11_TEXTURE2D_DESC depthDesc  = {};
+    depthDesc.Width                 = width;
+    depthDesc.Height                = height;
+    depthDesc.MipLevels             = 1;
+    depthDesc.ArraySize             = 1;
+    depthDesc.Format                = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depthDesc.SampleDesc.Count      = 1;
+    depthDesc.Usage                 = D3D11_USAGE_DEFAULT;
+    depthDesc.BindFlags             = D3D11_BIND_DEPTH_STENCIL;
+    SE_HR(m_device->CreateTexture2D(&depthDesc, nullptr, &m_depthTex));
+
+    D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+    dsvDesc.Format                        = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    dsvDesc.ViewDimension                 = D3D11_DSV_DIMENSION_TEXTURE2D;
+    SE_HR(m_device->CreateDepthStencilView(m_depthTex.Get(), &dsvDesc, &m_dsv));
+
+    D3D11_VIEWPORT vp = {};
+    vp.Width          = static_cast<float>(width);
+    vp.Height         = static_cast<float>(height);
+    vp.MaxDepth       = 1.0f;
+    m_context->RSSetViewports(1, &vp);
+
+    SE_LOG_INFO("Renderer resized — %ux%u", width, height);
+}
+
 void Renderer::Shutdown()
 {
     m_depthState.Reset();

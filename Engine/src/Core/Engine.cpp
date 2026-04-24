@@ -53,6 +53,12 @@ void Engine::Run()
         m_input.NewFrame();
         if (!m_window.PumpMessages()) break;
 
+        if (m_window.IsSizeDirty())
+        {
+            m_renderer.Resize(m_window.GetWidth(), m_window.GetHeight());
+            m_window.ClearSizeDirty();
+        }
+
         m_clock.Tick();
 
         m_renderer.BeginFrame(0.1f, 0.15f, 0.25f);
