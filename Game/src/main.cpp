@@ -31,6 +31,19 @@ struct LightCB
     XMFLOAT3 cameraPos;   float _pad2;
 };
 
+struct PointLightData
+{
+    XMFLOAT3 position; float radius;
+    XMFLOAT3 color;    float _pad;
+};
+
+struct PointLightCB
+{
+    PointLightData lights[8];
+    int            numLights;
+    XMFLOAT3       _pad;
+};
+
 class TestScene : public SE::Engine
 {
 public:
@@ -65,8 +78,9 @@ public:
         SE_HR(device->CreateInputLayout(layoutDesc, 3,
             vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_layout));
 
-        if (!m_transformCB.Create(device)) return false;
-        if (!m_lightCB.Create(device))     return false;
+        if (!m_transformCB.Create(device))   return false;
+        if (!m_lightCB.Create(device))       return false;
+        if (!m_pointLightCB.Create(device))  return false;
 
         // ---- Load FBX mesh ----
         if (!m_mesh.Load(device, "Assets/Meshes/Mossy_Stone_Wall_ukhgdfyga_Low.fbx"))
@@ -80,6 +94,15 @@ public:
         // ---- Anisotropic sampler — this is the game-quality default ----
         if (!m_sampler.Create(device, { SE::FilterMode::Anisotropic, SE::AddressMode::Wrap }))
             return false;
+
+        // ---- Point light defaults ----
+        m_pointLights[0].position[0] =  3.0f; m_pointLights[0].position[1] = 2.0f; m_pointLights[0].position[2] = 0.0f;
+        m_pointLights[0].color[0] = 1.0f; m_pointLights[0].color[1] = 0.3f; m_pointLights[0].color[2] = 0.05f;
+        m_pointLights[0].radius = 6.0f;
+
+        m_pointLights[1].position[0] = -2.5f; m_pointLights[1].position[1] = 3.5f; m_pointLights[1].position[2] = 2.0f;
+        m_pointLights[1].color[0] = 0.1f; m_pointLights[1].color[1] = 0.4f; m_pointLights[1].color[2] = 1.0f;
+        m_pointLights[1].radius = 5.0f;
 
         // ---- Input bindings ----
         m_actions.Bind("RotFaster", VK_RIGHT);
@@ -139,7 +162,22 @@ protected:
         ImGui::SliderFloat("Azimuth",   &m_lightAzim, -180.0f, 180.0f, "%.1f deg");
         ImGui::ColorEdit3("Light Color",   m_lightColor);
         ImGui::ColorEdit3("Ambient Color", m_ambientColor);
-        ImGui::SliderFloat("Shininess",    &m_shininess, 1.0f, 256.0f, "%.0f");
+        ImGui::SliderFloat("Shininess", &m_shininess, 1.0f, 256.0f, "%.0f");
+        ImGui::Separator();
+        ImGui::SliderInt("Active point lights", &m_numPointLights, 0, 8);
+        for (int i = 0; i < m_numPointLights; ++i)
+        {
+            ImGui::PushID(i);
+            char label[24];
+            sprintf_s(label, "Point Light %d", i + 1);
+            if (ImGui::CollapsingHeader(label))
+            {
+                ImGui::DragFloat3("Position", m_pointLights[i].position, 0.1f, -20.0f, 20.0f);
+                ImGui::ColorEdit3("Color",    m_pointLights[i].color);
+                ImGui::SliderFloat("Radius",  &m_pointLights[i].radius, 0.5f, 30.0f);
+            }
+            ImGui::PopID();
+        }
         if (gp.connected)
             ImGui::Text("Pad0  L(%.2f,%.2f) R(%.2f,%.2f) LT:%.2f RT:%.2f",
                 gp.leftX, gp.leftY, gp.rightX, gp.rightY,
@@ -158,6 +196,69 @@ protected:
                          static_cast<float>(GetWindow().GetHeight());
         XMMATRIX proj  = XMMatrixPerspectiveFovLH(
             XMConvertToRadians(60.0f), aspect, 0.1f, 100.0f);
+
+        // ---- Light viewport indicators ----
+        {
+            XMMATRIX viewProj = XMMatrixMultiply(view, proj);
+            float sw = static_cast<float>(GetWindow().GetWidth());
+            float sh = static_cast<float>(GetWindow().GetHeight());
+            ImDrawList* dl = ImGui::GetBackgroundDrawList();
+
+            auto project = [&](XMVECTOR wp, float& sx, float& sy) -> bool
+            {
+                XMVECTOR cp = XMVector4Transform(wp, viewProj);
+                float    cw = XMVectorGetW(cp);
+                if (cw <= 0.0f) return false;
+                sx = ( XMVectorGetX(cp) / cw * 0.5f + 0.5f) * sw;
+                sy = (-XMVectorGetY(cp) / cw * 0.5f + 0.5f) * sh;
+                return true;
+            };
+
+            // Sun — project a point far in the light direction from the camera
+            {
+                float er = XMConvertToRadians(m_lightElev);
+                float ar = XMConvertToRadians(m_lightAzim);
+                XMVECTOR dir = XMVectorSet(
+                    cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar), 0.0f);
+                XMVECTOR sunPos = XMVectorAdd(
+                    XMVectorSet(0.0f, 2.0f, -10.0f, 1.0f),
+                    XMVectorScale(dir, 60.0f));
+                sunPos = XMVectorSetW(sunPos, 1.0f);
+
+                float sx, sy;
+                if (project(sunPos, sx, sy))
+                {
+                    dl->AddCircleFilled({ sx, sy }, 10.0f, IM_COL32(255, 220, 50, 255));
+                    // Rays
+                    for (int r = 0; r < 8; ++r)
+                    {
+                        float a = r * 3.14159f / 4.0f;
+                        dl->AddLine({ sx + cosf(a) * 12.0f, sy + sinf(a) * 12.0f },
+                                    { sx + cosf(a) * 17.0f, sy + sinf(a) * 17.0f },
+                                    IM_COL32(255, 220, 50, 200), 1.5f);
+                    }
+                    dl->AddText({ sx + 14.0f, sy - 7.0f }, IM_COL32_WHITE, "Sun");
+                }
+            }
+
+            // Point lights — 1-indexed to match the panel
+            for (int i = 0; i < m_numPointLights; ++i)
+            {
+                const auto& s = m_pointLights[i];
+                float sx, sy;
+                if (!project(XMVectorSet(s.position[0], s.position[1], s.position[2], 1.0f), sx, sy))
+                    continue;
+
+                ImU32 fill = ImGui::ColorConvertFloat4ToU32(
+                    { s.color[0], s.color[1], s.color[2], 1.0f });
+                dl->AddCircleFilled({ sx, sy }, 7.0f, fill);
+                dl->AddCircle({ sx, sy }, 8.0f, IM_COL32(255, 255, 255, 200), 0, 1.5f);
+
+                char tag[8];
+                sprintf_s(tag, "PL%d", i + 1);
+                dl->AddText({ sx + 11.0f, sy - 7.0f }, IM_COL32_WHITE, tag);
+            }
+        }
 
         TransformCB cb;
         XMStoreFloat4x4(&cb.model,      model);
@@ -183,6 +284,21 @@ protected:
             m_lightCB.BindPS(ctx, 1);
         }
 
+        // ---- Point lights ----
+        {
+            PointLightCB pl = {};
+            pl.numLights = m_numPointLights;
+            for (int i = 0; i < m_numPointLights; ++i)
+            {
+                const auto& s = m_pointLights[i];
+                pl.lights[i].position = { s.position[0], s.position[1], s.position[2] };
+                pl.lights[i].radius   = s.radius;
+                pl.lights[i].color    = { s.color[0], s.color[1], s.color[2] };
+            }
+            m_pointLightCB.Update(ctx, pl);
+            m_pointLightCB.BindPS(ctx, 2);
+        }
+
         m_texture.BindPS(ctx, 0);
         m_sampler.BindPS(ctx, 0);
 
@@ -199,9 +315,10 @@ private:
     ComPtr<ID3D11PixelShader>       m_ps;
     ComPtr<ID3D11InputLayout>       m_layout;
     SE::Mesh                        m_mesh;
-    SE::ConstantBuffer<TransformCB> m_transformCB;
-    SE::ConstantBuffer<LightCB>     m_lightCB;
-    SE::Texture2D                   m_texture;
+    SE::ConstantBuffer<TransformCB>   m_transformCB;
+    SE::ConstantBuffer<LightCB>       m_lightCB;
+    SE::ConstantBuffer<PointLightCB>  m_pointLightCB;
+    SE::Texture2D                     m_texture;
     SE::SamplerState                m_sampler;
 
     float          m_scale    = 0.02f;
@@ -214,6 +331,16 @@ private:
     float m_shininess    =  64.0f;
     float m_lightColor[3]   = { 1.0f, 0.95f, 0.85f };
     float m_ambientColor[3] = { 0.08f, 0.08f, 0.12f };
+
+    struct PointLightSettings
+    {
+        float position[3]   = { 0.0f, 2.0f, 0.0f };
+        float color[3]      = { 1.0f, 1.0f, 1.0f };
+        float radius        = 6.0f;
+    };
+
+    int                m_numPointLights = 2;
+    PointLightSettings m_pointLights[8];
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)

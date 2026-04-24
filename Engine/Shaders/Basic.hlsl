@@ -5,16 +5,33 @@ cbuffer TransformCB : register(b0)
     row_major matrix Projection;
 };
 
+// Directional light + shared params
 cbuffer LightCB : register(b1)
 {
-    float3 LightDir;     // world-space, pointing TOWARD the light source
+    float3 LightDir;      // world-space, toward light
     float  Shininess;
     float3 LightColor;
     float  _pad0;
     float3 AmbientColor;
     float  _pad1;
-    float3 CameraPos;    // world-space eye position
+    float3 CameraPos;
     float  _pad2;
+};
+
+// Point lights
+struct PointLight
+{
+    float3 Position;
+    float  Radius;      // world-space falloff radius
+    float3 Color;
+    float  _pad;
+};
+
+cbuffer PointLightCB : register(b2)
+{
+    PointLight PointLights[8];
+    int        NumPointLights;
+    float3     _plpad;
 };
 
 Texture2D    g_texture : register(t0);
@@ -38,30 +55,48 @@ struct PSIn
 PSIn VS_Main(VSIn input)
 {
     PSIn output;
-    float4 world     = mul(float4(input.Position, 1.0f), Model);
-    output.WorldPos  = world.xyz;
-    output.Position  = mul(mul(world, View), Projection);
-    // Upper-left 3x3 of Model is correct for normal transform under uniform scale.
-    output.Normal    = mul(input.Normal, (float3x3)Model);
-    output.TexCoord  = input.TexCoord;
+    float4 world    = mul(float4(input.Position, 1.0f), Model);
+    output.WorldPos = world.xyz;
+    output.Position = mul(mul(world, View), Projection);
+    output.Normal   = mul(input.Normal, (float3x3)Model);
+    output.TexCoord = input.TexCoord;
     return output;
 }
 
 float4 PS_Main(PSIn input) : SV_TARGET
 {
-    float3 N = normalize(input.Normal);
-    float3 L = normalize(LightDir);
-    float3 V = normalize(CameraPos - input.WorldPos);
-    float3 H = normalize(L + V);
+    float3 N      = normalize(input.Normal);
+    float3 V      = normalize(CameraPos - input.WorldPos);
+    float4 albedo = g_texture.Sample(g_sampler, input.TexCoord);
 
+    // Directional light
+    float3 L    = normalize(LightDir);
+    float3 H    = normalize(L + V);
     float  diff = max(dot(N, L), 0.0f);
     float  spec = (diff > 0.0f) ? pow(max(dot(N, H), 0.0f), Shininess) : 0.0f;
 
-    float4 albedo = g_texture.Sample(g_sampler, input.TexCoord);
+    float3 color = AmbientColor * albedo.rgb
+                 + LightColor   * diff * albedo.rgb
+                 + LightColor   * spec * 0.4f;
 
-    float3 color = AmbientColor  * albedo.rgb
-                 + LightColor    * diff * albedo.rgb
-                 + LightColor    * spec * 0.4f;
+    // Point lights
+    for (int i = 0; i < NumPointLights; ++i)
+    {
+        float3 toLight = PointLights[i].Position - input.WorldPos;
+        float  dist    = length(toLight);
+        if (dist >= PointLights[i].Radius) continue;
+
+        // Smooth quadratic falloff — 1 at center, 0 at radius
+        float  atten = 1.0f - (dist / PointLights[i].Radius);
+        atten        = atten * atten;
+
+        float3 PL   = toLight / dist;
+        float3 PH   = normalize(PL + V);
+        float  pd   = max(dot(N, PL), 0.0f);
+        float  ps   = (pd > 0.0f) ? pow(max(dot(N, PH), 0.0f), Shininess) : 0.0f;
+
+        color += PointLights[i].Color * atten * (pd * albedo.rgb + ps * 0.4f);
+    }
 
     return float4(color, albedo.a);
 }
