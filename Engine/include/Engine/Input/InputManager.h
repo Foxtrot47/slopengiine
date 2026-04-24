@@ -1,8 +1,11 @@
 #pragma once
 #include <windows.h>
 #include <cstdint>
+#include "Engine/Input/GamepadState.h"
 
 namespace SE {
+
+static constexpr uint32_t k_MaxGamepads = 4;
 
 class InputManager
 {
@@ -11,9 +14,9 @@ public:
     void NewFrame();   // call once per frame before OnUpdate — resets one-shot states
 
     // Keyboard — use Win32 virtual-key codes (VK_W, 'A', VK_SPACE, etc.)
-    bool IsKeyDown    (int vk) const;  // held this frame
-    bool IsKeyPressed (int vk) const;  // true only the first frame it goes down
-    bool IsKeyReleased(int vk) const;  // true only the first frame it goes up
+    bool IsKeyDown    (int vk) const;
+    bool IsKeyPressed (int vk) const;
+    bool IsKeyReleased(int vk) const;
 
     // Mouse — deltas accumulated since last NewFrame (WM_MOUSEMOVE based)
     int32_t GetMouseDeltaX()    const { return m_mouseDX; }
@@ -22,10 +25,15 @@ public:
     int32_t GetMouseX()         const { return m_mouseAbsX; }
     int32_t GetMouseY()         const { return m_mouseAbsY; }
 
+    // Gamepad — index 0-3; always safe to call even if not connected
+    const GamepadState& GetGamepad(uint32_t index = 0) const;
+    void SetRumble(uint32_t index, float leftMotor, float rightMotor);
+
     // Passed to Window::SetInputHook
     static LRESULT WndProcHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 
 private:
+    void PollGamepads();
 
     bool    m_keyDown    [256] = {};
     bool    m_keyPressed [256] = {};
@@ -37,6 +45,9 @@ private:
     int32_t m_mouseAbsX   = 0;
     int32_t m_mouseAbsY   = 0;
     bool    m_mouseHasPos = false;
+
+    GamepadState m_gamepads[k_MaxGamepads];
+    uint16_t     m_prevButtons[k_MaxGamepads] = {};
 };
 
 } // namespace SE
