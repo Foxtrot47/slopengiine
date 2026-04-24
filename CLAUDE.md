@@ -117,7 +117,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M05 | ~~D3D11 device + swap chain + render target view; clear to a color~~ ✓ |
 | M06 | ~~First triangle — hardcoded vertices, passthrough HLSL~~ ✓ |
 | M07 | ~~Vertex/index buffer abstraction; indexed quad~~ ✓ |
-| M08 | Constant buffers; per-object MVP transform |
+| M08 | ~~Constant buffers; per-object MVP transform~~ ✓ |
 | M09 | Depth/stencil buffer; Z-test enabled |
 | M10 | Texture loading (stb_image); textured quad |
 | M11 | Sampler states; UV wrap/clamp, min/mag/mip filter modes |
