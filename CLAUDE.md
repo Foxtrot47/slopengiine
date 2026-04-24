@@ -120,7 +120,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M08 | ~~Constant buffers; per-object MVP transform~~ ✓ |
 | M09 | ~~Depth/stencil buffer; Z-test enabled~~ ✓ |
 | M10 | ~~Texture loading (WIC, Microsoft-native); textured quad~~ ✓ |
-| M11 | Sampler states; UV wrap/clamp, min/mag/mip filter modes |
+| M11 | ~~Sampler states; UV wrap/clamp, min/mag/mip filter modes~~ ✓ |
 | M12 | Mesh class; OBJ import (tinyobjloader) |
 
 ### Phase 3 — Lighting & Materials
