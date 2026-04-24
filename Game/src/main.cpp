@@ -23,6 +23,14 @@ struct TransformCB
     XMFLOAT4X4 projection;
 };
 
+struct LightCB
+{
+    XMFLOAT3 lightDir;    float shininess;
+    XMFLOAT3 lightColor;  float _pad0;
+    XMFLOAT3 ambientColor;float _pad1;
+    XMFLOAT3 cameraPos;   float _pad2;
+};
+
 class TestScene : public SE::Engine
 {
 public:
@@ -58,6 +66,7 @@ public:
             vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_layout));
 
         if (!m_transformCB.Create(device)) return false;
+        if (!m_lightCB.Create(device))     return false;
 
         // ---- Load FBX mesh ----
         if (!m_mesh.Load(device, "Assets/Meshes/Mossy_Stone_Wall_ukhgdfyga_Low.fbx"))
@@ -118,7 +127,6 @@ protected:
         }
 
         // ---- Debug panel ----
-        const SE::InputManager& input = GetInput();
         ImGui::Begin("Scene");
         ImGui::Text("%.1f fps  |  %.2f ms",
                     GetClock().GetFPS(), GetClock().GetDeltaTime() * 1000.0f);
@@ -126,10 +134,12 @@ protected:
         ImGui::SliderFloat("Scale",     &m_scale,    0.001f, 0.1f, "%.4f");
         ImGui::SliderFloat("Rot Speed", &m_rotSpeed, 0.0f,   3.0f);
         ImGui::Separator();
-        ImGui::Text("Mouse  %+d  %+d", input.GetMouseDeltaX(), input.GetMouseDeltaY());
-        ImGui::Text("Actions  RotF:%d RotS:%d ScaleU:%d ScaleD:%d",
-            m_actions.IsHeld("RotFaster"), m_actions.IsHeld("RotSlower"),
-            m_actions.IsHeld("ScaleUp"),   m_actions.IsHeld("ScaleDown"));
+        ImGui::Text("Lighting");
+        ImGui::SliderFloat("Elevation", &m_lightElev,  -90.0f, 90.0f,  "%.1f deg");
+        ImGui::SliderFloat("Azimuth",   &m_lightAzim, -180.0f, 180.0f, "%.1f deg");
+        ImGui::ColorEdit3("Light Color",   m_lightColor);
+        ImGui::ColorEdit3("Ambient Color", m_ambientColor);
+        ImGui::SliderFloat("Shininess",    &m_shininess, 1.0f, 256.0f, "%.0f");
         if (gp.connected)
             ImGui::Text("Pad0  L(%.2f,%.2f) R(%.2f,%.2f) LT:%.2f RT:%.2f",
                 gp.leftX, gp.leftY, gp.rightX, gp.rightY,
@@ -154,6 +164,23 @@ protected:
         m_transformCB.Update(ctx, cb);
         m_transformCB.BindVS(ctx, 0);
 
+        // ---- Light constant buffer ----
+        {
+            float elevRad = XMConvertToRadians(m_lightElev);
+            float azimRad = XMConvertToRadians(m_lightAzim);
+            LightCB lc;
+            lc.lightDir     = { cosf(elevRad) * sinf(azimRad), sinf(elevRad), cosf(elevRad) * cosf(azimRad) };
+            lc.shininess    = m_shininess;
+            lc.lightColor   = { m_lightColor[0],   m_lightColor[1],   m_lightColor[2] };
+            lc._pad0        = 0.0f;
+            lc.ambientColor = { m_ambientColor[0], m_ambientColor[1], m_ambientColor[2] };
+            lc._pad1        = 0.0f;
+            lc.cameraPos    = { 0.0f, 2.0f, -10.0f };
+            lc._pad2        = 0.0f;
+            m_lightCB.Update(ctx, lc);
+            m_lightCB.BindPS(ctx, 1);
+        }
+
         m_texture.BindPS(ctx, 0);
         m_sampler.BindPS(ctx, 0);
 
@@ -171,6 +198,7 @@ private:
     ComPtr<ID3D11InputLayout>       m_layout;
     SE::Mesh                        m_mesh;
     SE::ConstantBuffer<TransformCB> m_transformCB;
+    SE::ConstantBuffer<LightCB>     m_lightCB;
     SE::Texture2D                   m_texture;
     SE::SamplerState                m_sampler;
 
@@ -178,6 +206,12 @@ private:
     float          m_rotSpeed = 0.4f;
     float          m_rotAngle = 0.0f;
     SE::ActionMap  m_actions;
+
+    float m_lightElev    =  35.0f;
+    float m_lightAzim    =  45.0f;
+    float m_shininess    =  64.0f;
+    float m_lightColor[3]   = { 1.0f, 0.95f, 0.85f };
+    float m_ambientColor[3] = { 0.08f, 0.08f, 0.12f };
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
