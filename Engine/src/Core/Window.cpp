@@ -80,6 +80,10 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
 
     Window* self = reinterpret_cast<Window*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    // Input runs first — WM_INPUT buffer can only be read once per message.
+    if (self && self->m_inputHook)
+        self->m_inputHook(hwnd, msg, wp, lp);
+    // ImGui runs second — can still consume keyboard/mouse messages for UI.
     if (self && self->m_msgHook)
         if (self->m_msgHook(hwnd, msg, wp, lp)) return true;
 

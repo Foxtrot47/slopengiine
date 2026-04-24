@@ -27,7 +27,8 @@ public:
     // Returns false when the OS has posted WM_QUIT (user closed window).
     bool PumpMessages();
 
-    void SetMessageHook(MsgHookFn fn) { m_msgHook = fn; }
+    void SetMessageHook(MsgHookFn fn) { m_msgHook   = fn; }
+    void SetInputHook  (MsgHookFn fn) { m_inputHook = fn; }
 
     HWND     GetHandle()  const { return m_hwnd; }
     uint32_t GetWidth()   const { return m_width; }
@@ -37,10 +38,11 @@ public:
 private:
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 
-    HWND      m_hwnd    = nullptr;
-    uint32_t  m_width   = 0;
-    uint32_t  m_height  = 0;
-    MsgHookFn m_msgHook = nullptr;
+    HWND      m_hwnd      = nullptr;
+    uint32_t  m_width     = 0;
+    uint32_t  m_height    = 0;
+    MsgHookFn m_msgHook   = nullptr;  // ImGui — can consume
+    MsgHookFn m_inputHook = nullptr;  // Input  — never consumes
 };
 
 } // namespace SE
