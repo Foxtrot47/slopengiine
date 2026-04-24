@@ -1,5 +1,6 @@
 #pragma once
 #include "Engine/Core/Window.h"
+#include "Engine/Core/Logger.h"
 
 namespace SE {
 

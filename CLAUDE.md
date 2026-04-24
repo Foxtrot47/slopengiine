@@ -105,8 +105,8 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 
 | # | Milestone |
 |---|---|
-| M01 | Repo + CMake scaffold, CLAUDE.md |
-| M02 | Win32 window + message loop; clean shutdown |
+| M01 | ~~Repo + CMake scaffold, CLAUDE.md~~ ✓ |
+| M02 | ~~Win32 window + message loop; clean shutdown~~ ✓ |
 | M03 | Logging system (`SE_LOG`, severity levels, file+console sink) |
 | M04 | Timer / clock (`SE::Clock` — frame delta, elapsed, fixed timestep) |
 
