@@ -10,6 +10,7 @@
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/Texture2D.h"
 #include "Engine/Renderer/SamplerState.h"
+#include "Engine/Input/ActionMap.h"
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -70,6 +71,14 @@ public:
         if (!m_sampler.Create(device, { SE::FilterMode::Anisotropic, SE::AddressMode::Wrap }))
             return false;
 
+        // ---- Input bindings ----
+        m_actions.Bind("RotFaster", VK_RIGHT);
+        m_actions.Bind("RotFaster", 'D');
+        m_actions.Bind("RotSlower", VK_LEFT);
+        m_actions.Bind("RotSlower", 'A');
+        m_actions.Bind("ScaleUp",   VK_UP);
+        m_actions.Bind("ScaleDown", VK_DOWN);
+
         SE_LOG_INFO("TestScene ready — mossy stone wall");
         return true;
     }
@@ -78,7 +87,16 @@ protected:
     void OnUpdate() override
     {
         ID3D11DeviceContext* ctx = GetRenderer().GetContext();
-        float t = static_cast<float>(GetClock().GetTotalTime());
+        float dt = GetClock().GetDeltaTime();
+
+        // ---- Action map update ----
+        m_actions.Update(GetInput());
+        m_rotAngle += dt * m_rotSpeed;
+
+        if (m_actions.IsHeld("RotFaster"))  m_rotSpeed = min(3.0f, m_rotSpeed + dt * 1.5f);
+        if (m_actions.IsHeld("RotSlower"))  m_rotSpeed = max(0.0f, m_rotSpeed - dt * 1.5f);
+        if (m_actions.IsHeld("ScaleUp"))    m_scale    = min(0.1f, m_scale    + dt * 0.01f);
+        if (m_actions.IsHeld("ScaleDown"))  m_scale    = max(0.001f, m_scale  - dt * 0.01f);
 
         // ---- Debug panel ----
         const SE::InputManager& input = GetInput();
@@ -86,17 +104,17 @@ protected:
         ImGui::Text("%.1f fps  |  %.2f ms",
                     GetClock().GetFPS(), GetClock().GetDeltaTime() * 1000.0f);
         ImGui::Separator();
-        ImGui::SliderFloat("Scale",     &m_scale,    0.001f, 0.1f,  "%.4f");
+        ImGui::SliderFloat("Scale",     &m_scale,    0.001f, 0.1f, "%.4f");
         ImGui::SliderFloat("Rot Speed", &m_rotSpeed, 0.0f,   3.0f);
         ImGui::Separator();
-        ImGui::Text("Mouse delta  %+d  %+d", input.GetMouseDeltaX(), input.GetMouseDeltaY());
-        ImGui::Text("WASD  %d %d %d %d",
-            input.IsKeyDown('W'), input.IsKeyDown('A'),
-            input.IsKeyDown('S'), input.IsKeyDown('D'));
+        ImGui::Text("Mouse  %+d  %+d", input.GetMouseDeltaX(), input.GetMouseDeltaY());
+        ImGui::Text("Actions  RotF:%d RotS:%d ScaleU:%d ScaleD:%d",
+            m_actions.IsHeld("RotFaster"), m_actions.IsHeld("RotSlower"),
+            m_actions.IsHeld("ScaleUp"),   m_actions.IsHeld("ScaleDown"));
         ImGui::End();
 
         XMMATRIX model = XMMatrixScaling(m_scale, m_scale, m_scale)
-                       * XMMatrixRotationY(t * m_rotSpeed);
+                       * XMMatrixRotationY(m_rotAngle);
         XMMATRIX view  = XMMatrixLookAtLH(
             XMVectorSet(0.0f, 2.0f, -10.0f, 1.0f),
             XMVectorSet(0.0f, 2.0f,   0.0f, 1.0f),
@@ -131,8 +149,10 @@ private:
     SE::Texture2D                   m_texture;
     SE::SamplerState                m_sampler;
 
-    float m_scale    = 0.02f;
-    float m_rotSpeed = 0.4f;
+    float          m_scale    = 0.02f;
+    float          m_rotSpeed = 0.4f;
+    float          m_rotAngle = 0.0f;
+    SE::ActionMap  m_actions;
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
