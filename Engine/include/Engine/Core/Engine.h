@@ -2,6 +2,7 @@
 #include "Engine/Core/Window.h"
 #include "Engine/Core/Logger.h"
 #include "Engine/Core/Clock.h"
+#include "Engine/Renderer/Renderer.h"
 
 namespace SE {
 
@@ -15,14 +16,17 @@ public:
     void Run();
     void Shutdown();
 
-    Window&      GetWindow() { return m_window; }
-    const Clock& GetClock()  const { return m_clock; }
+    Window&         GetWindow()   { return m_window; }
+    const Clock&    GetClock()    const { return m_clock; }
+    Renderer&       GetRenderer() { return m_renderer; }
 
-private:
+protected:
     virtual void OnUpdate() {}
 
-    Window m_window;
-    Clock  m_clock;
+private:
+    Window   m_window;
+    Clock    m_clock;
+    Renderer m_renderer;
 };
 
 } // namespace SE

@@ -1,5 +1,4 @@
 #include "Engine/Core/Engine.h"
-#include <cstdio>
 
 namespace SE {
 
@@ -11,6 +10,14 @@ bool Engine::Initialize(const WindowDesc& windowDesc)
     if (!m_window.Open(windowDesc))
     {
         SE_LOG_FATAL("Failed to open window");
+        return false;
+    }
+
+    if (!m_renderer.Initialize(m_window.GetHandle(),
+                                m_window.GetWidth(),
+                                m_window.GetHeight()))
+    {
+        SE_LOG_FATAL("Failed to initialise renderer");
         return false;
     }
 
@@ -27,9 +34,11 @@ void Engine::Run()
     while (m_window.PumpMessages())
     {
         m_clock.Tick();
-        OnUpdate();
 
-        // Update title bar with FPS once per second.
+        m_renderer.BeginFrame(0.1f, 0.15f, 0.25f); // dark slate blue
+        OnUpdate();
+        m_renderer.EndFrame();
+
         fpsTimer += m_clock.GetDeltaTime();
         if (fpsTimer >= 1.0f)
         {
@@ -48,6 +57,7 @@ void Engine::Run()
 
 void Engine::Shutdown()
 {
+    m_renderer.Shutdown();
     m_window.Close();
     Logger::Get().Shutdown();
 }

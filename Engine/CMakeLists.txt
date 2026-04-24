@@ -7,6 +7,13 @@ target_include_directories(SlopEngine
     PRIVATE src
 )
 
+target_link_libraries(SlopEngine PUBLIC
+    d3d11.lib
+    dxgi.lib
+    d3dcompiler.lib
+    dxguid.lib
+)
+
 target_compile_definitions(SlopEngine PUBLIC
     UNICODE
     _UNICODE
