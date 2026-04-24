@@ -12,6 +12,7 @@ target_link_libraries(FoxEngine PUBLIC
     dxgi.lib
     d3dcompiler.lib
     dxguid.lib
+    assimp::assimp
 )
 
 target_compile_definitions(FoxEngine PUBLIC
