@@ -38,6 +38,7 @@ slopengine/
 │
 ├── Engine/                     # Core engine — compiled as a static library (SlopEngine.lib)
 │   ├── CMakeLists.txt
+│   ├── Shaders/                # Engine-internal HLSL
 │   ├── include/Engine/         # Public headers (SE:: namespace)
 │   │   ├── Core/               # Platform, logging, memory, time
 │   │   ├── Renderer/           # Graphics pipeline, shaders, mesh, material
@@ -57,8 +58,7 @@ slopengine/
 │   ├── CMakeLists.txt
 │   └── src/
 │
-├── Assets/                     # Shared runtime assets
-│   ├── Shaders/                # .hlsl source
+├── Assets/                     # User-facing runtime assets (textures, models, audio, etc.)
 │   ├── Textures/
 │   ├── Models/
 │   ├── Audio/

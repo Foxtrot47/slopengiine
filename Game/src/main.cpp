@@ -8,6 +8,7 @@
 #include "Engine/Renderer/VertexBuffer.h"
 #include "Engine/Renderer/IndexBuffer.h"
 #include "Engine/Renderer/ConstantBuffer.h"
+#include "Engine/Renderer/Texture2D.h"
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -15,7 +16,7 @@ using namespace DirectX;
 struct Vertex
 {
     float x, y, z;
-    float r, g, b, a;
+    float u, v;
 };
 
 struct TransformCB
@@ -32,57 +33,61 @@ public:
     {
         ID3D11Device* device = GetRenderer().GetDevice();
 
-        // ---- Shaders ----
+        // ---- Shaders — now live in Engine/Shaders/ ----
         ComPtr<ID3DBlob> vsBlob, psBlob, errBlob;
         UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
 #ifdef SE_DEBUG
         flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #endif
-        HRESULT hr = D3DCompileFromFile(L"Assets/Shaders/Triangle.hlsl",
+        HRESULT hr = D3DCompileFromFile(L"Shaders/Basic.hlsl",
             nullptr, nullptr, "VS_Main", "vs_5_0", flags, 0, &vsBlob, &errBlob);
         if (FAILED(hr)) { if (errBlob) SE_LOG_ERROR("VS: %s", (char*)errBlob->GetBufferPointer()); return false; }
 
-        hr = D3DCompileFromFile(L"Assets/Shaders/Triangle.hlsl",
+        hr = D3DCompileFromFile(L"Shaders/Basic.hlsl",
             nullptr, nullptr, "PS_Main", "ps_5_0", flags, 0, &psBlob, &errBlob);
         if (FAILED(hr)) { if (errBlob) SE_LOG_ERROR("PS: %s", (char*)errBlob->GetBufferPointer()); return false; }
 
         SE_HR(device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_vs));
         SE_HR(device->CreatePixelShader(psBlob->GetBufferPointer(),  psBlob->GetBufferSize(), nullptr, &m_ps));
 
+        // ---- Input layout ----
         D3D11_INPUT_ELEMENT_DESC layoutDesc[] =
         {
-            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,   0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-            { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         };
         SE_HR(device->CreateInputLayout(layoutDesc, 2,
             vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_layout));
 
-        // ---- Front quad (spinning, rainbow) ----
-        Vertex frontVerts[] =
+        // ---- Quad ----
+        Vertex verts[] =
         {
-            { -0.5f,  0.5f, 0.0f,   1.0f, 0.3f, 0.3f, 1.0f },
-            {  0.5f,  0.5f, 0.0f,   0.3f, 1.0f, 0.3f, 1.0f },
-            { -0.5f, -0.5f, 0.0f,   0.3f, 0.3f, 1.0f, 1.0f },
-            {  0.5f, -0.5f, 0.0f,   1.0f, 1.0f, 0.3f, 1.0f },
+            { -0.5f,  0.5f, 0.0f,   0.0f, 0.0f },
+            {  0.5f,  0.5f, 0.0f,   1.0f, 0.0f },
+            { -0.5f, -0.5f, 0.0f,   0.0f, 1.0f },
+            {  0.5f, -0.5f, 0.0f,   1.0f, 1.0f },
         };
-
-        // ---- Back quad (static, white, larger — sits behind the front one) ----
-        Vertex backVerts[] =
-        {
-            { -0.75f,  0.75f, 0.0f,   1.0f, 1.0f, 1.0f, 1.0f },
-            {  0.75f,  0.75f, 0.0f,   1.0f, 1.0f, 1.0f, 1.0f },
-            { -0.75f, -0.75f, 0.0f,   1.0f, 1.0f, 1.0f, 1.0f },
-            {  0.75f, -0.75f, 0.0f,   1.0f, 1.0f, 1.0f, 1.0f },
-        };
-
         uint32_t indices[] = { 0, 1, 2,   1, 3, 2 };
 
-        if (!m_frontVB.Create(device, frontVerts, sizeof(frontVerts), sizeof(Vertex))) return false;
-        if (!m_backVB.Create(device,  backVerts,  sizeof(backVerts),  sizeof(Vertex))) return false;
-        if (!m_ib.Create(device, indices, 6))     return false;
-        if (!m_transformCB.Create(device))        return false;
+        if (!m_vb.Create(device, verts, sizeof(verts), sizeof(Vertex))) return false;
+        if (!m_ib.Create(device, indices, 6))                           return false;
+        if (!m_transformCB.Create(device))                              return false;
 
-        SE_LOG_INFO("TestScene ready — two quads, depth test active");
+        // ---- Load concrete BaseColor texture via WIC ----
+        if (!m_texture.LoadFromFile(device,
+            L"Assets/Textures/Stained_Concrete_Ceiling_ueydffrdy_1K_BaseColor.jpg"))
+            return false;
+
+        // ---- Linear wrap sampler ----
+        D3D11_SAMPLER_DESC sd = {};
+        sd.Filter   = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+        sd.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+        sd.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+        sd.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+        sd.MaxLOD   = D3D11_FLOAT32_MAX;
+        SE_HR(device->CreateSamplerState(&sd, &m_sampler));
+
+        SE_LOG_INFO("TestScene ready — concrete texture loaded");
         return true;
     }
 
@@ -92,56 +97,42 @@ protected:
         ID3D11DeviceContext* ctx = GetRenderer().GetContext();
         float t = static_cast<float>(GetClock().GetTotalTime());
 
-        XMMATRIX view = XMMatrixLookAtLH(
-            XMVectorSet(0.0f, 0.8f, -2.5f, 1.0f),
+        XMMATRIX model = XMMatrixRotationY(t);
+        XMMATRIX view  = XMMatrixLookAtLH(
+            XMVectorSet(0.0f, 0.5f, -2.0f, 1.0f),
             XMVectorSet(0.0f, 0.0f,  0.0f, 1.0f),
             XMVectorSet(0.0f, 1.0f,  0.0f, 0.0f));
-
-        XMMATRIX proj = XMMatrixPerspectiveFovLH(
+        XMMATRIX proj  = XMMatrixPerspectiveFovLH(
             XMConvertToRadians(60.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
 
-        // Shared pipeline state
+        TransformCB cb;
+        XMStoreFloat4x4(&cb.model,      model);
+        XMStoreFloat4x4(&cb.view,       view);
+        XMStoreFloat4x4(&cb.projection, proj);
+        m_transformCB.Update(ctx, cb);
+        m_transformCB.BindVS(ctx, 0);
+
+        m_texture.BindPS(ctx, 0);
+        ctx->PSSetSamplers(0, 1, m_sampler.GetAddressOf());
+
         ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         ctx->IASetInputLayout(m_layout.Get());
+        m_vb.Bind(ctx);
+        m_ib.Bind(ctx);
         ctx->VSSetShader(m_vs.Get(), nullptr, 0);
         ctx->PSSetShader(m_ps.Get(), nullptr, 0);
-        m_ib.Bind(ctx);
-
-        // ---- Back quad: static, pushed 1 unit behind origin ----
-        {
-            XMMATRIX model = XMMatrixTranslation(0.0f, 0.0f, 1.0f);
-            TransformCB cb;
-            XMStoreFloat4x4(&cb.model,      model);
-            XMStoreFloat4x4(&cb.view,       view);
-            XMStoreFloat4x4(&cb.projection, proj);
-            m_transformCB.Update(ctx, cb);
-            m_transformCB.BindVS(ctx, 0);
-            m_backVB.Bind(ctx);
-            ctx->DrawIndexed(m_ib.GetCount(), 0, 0);
-        }
-
-        // ---- Front quad: spinning at origin ----
-        {
-            XMMATRIX model = XMMatrixRotationY(t);
-            TransformCB cb;
-            XMStoreFloat4x4(&cb.model,      model);
-            XMStoreFloat4x4(&cb.view,       view);
-            XMStoreFloat4x4(&cb.projection, proj);
-            m_transformCB.Update(ctx, cb);
-            m_transformCB.BindVS(ctx, 0);
-            m_frontVB.Bind(ctx);
-            ctx->DrawIndexed(m_ib.GetCount(), 0, 0);
-        }
+        ctx->DrawIndexed(m_ib.GetCount(), 0, 0);
     }
 
 private:
     ComPtr<ID3D11VertexShader>      m_vs;
     ComPtr<ID3D11PixelShader>       m_ps;
     ComPtr<ID3D11InputLayout>       m_layout;
-    SE::VertexBuffer                m_frontVB;
-    SE::VertexBuffer                m_backVB;
+    ComPtr<ID3D11SamplerState>      m_sampler;
+    SE::VertexBuffer                m_vb;
     SE::IndexBuffer                 m_ib;
     SE::ConstantBuffer<TransformCB> m_transformCB;
+    SE::Texture2D                   m_texture;
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
