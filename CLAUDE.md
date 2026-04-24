@@ -119,7 +119,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M07 | ~~Vertex/index buffer abstraction; indexed quad~~ ✓ |
 | M08 | ~~Constant buffers; per-object MVP transform~~ ✓ |
 | M09 | ~~Depth/stencil buffer; Z-test enabled~~ ✓ |
-| M10 | Texture loading (stb_image); textured quad |
+| M10 | ~~Texture loading (WIC, Microsoft-native); textured quad~~ ✓ |
 | M11 | Sampler states; UV wrap/clamp, min/mag/mip filter modes |
 | M12 | Mesh class; OBJ import (tinyobjloader) |
 
