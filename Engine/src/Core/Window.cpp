@@ -70,9 +70,41 @@ bool Window::PumpMessages()
     return true;
 }
 
+void Window::ToggleFullscreen()
+{
+    if (!m_isFullscreen)
+    {
+        GetWindowRect(m_hwnd, &m_windowedRect);
+        m_windowedStyle = GetWindowLongW(m_hwnd, GWL_STYLE);
+
+        HMONITOR hMon = MonitorFromWindow(m_hwnd, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = { sizeof(mi) };
+        GetMonitorInfoW(hMon, &mi);
+
+        SetWindowLongW(m_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+        SetWindowPos(m_hwnd, HWND_TOP,
+            mi.rcMonitor.left, mi.rcMonitor.top,
+            mi.rcMonitor.right  - mi.rcMonitor.left,
+            mi.rcMonitor.bottom - mi.rcMonitor.top,
+            SWP_FRAMECHANGED);
+
+        m_isFullscreen = true;
+    }
+    else
+    {
+        SetWindowLongW(m_hwnd, GWL_STYLE, m_windowedStyle);
+        SetWindowPos(m_hwnd, nullptr,
+            m_windowedRect.left, m_windowedRect.top,
+            m_windowedRect.right  - m_windowedRect.left,
+            m_windowedRect.bottom - m_windowedRect.top,
+            SWP_FRAMECHANGED | SWP_NOZORDER);
+
+        m_isFullscreen = false;
+    }
+}
+
 LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
-    // On creation, store the Window* passed as lpParam so we can reach it here.
     if (msg == WM_NCCREATE)
     {
         auto* cs = reinterpret_cast<CREATESTRUCTW*>(lp);
@@ -80,18 +112,31 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
 
     Window* self = reinterpret_cast<Window*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
-    // Input runs first — WM_INPUT buffer can only be read once per message.
     if (self && self->m_inputHook)
         self->m_inputHook(hwnd, msg, wp, lp);
-    // ImGui runs second — can still consume keyboard/mouse messages for UI.
     if (self && self->m_msgHook)
         if (self->m_msgHook(hwnd, msg, wp, lp)) return true;
 
     switch (msg)
     {
+    case WM_SIZE:
+        if (self && wp != SIZE_MINIMIZED)
+        {
+            self->m_width     = LOWORD(lp);
+            self->m_height    = HIWORD(lp);
+            self->m_sizeDirty = true;
+        }
+        return 0;
+
+    case WM_KEYDOWN:
+        if (wp == VK_F11 && self)
+            self->ToggleFullscreen();
+        return 0;
+
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
+
     case WM_CLOSE:
         DestroyWindow(hwnd);
         return 0;

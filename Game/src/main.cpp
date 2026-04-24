@@ -154,8 +154,10 @@ protected:
             XMVectorSet(0.0f, 2.0f, -10.0f, 1.0f),
             XMVectorSet(0.0f, 2.0f,   0.0f, 1.0f),
             XMVectorSet(0.0f, 1.0f,   0.0f, 0.0f));
+        float aspect   = static_cast<float>(GetWindow().GetWidth()) /
+                         static_cast<float>(GetWindow().GetHeight());
         XMMATRIX proj  = XMMatrixPerspectiveFovLH(
-            XMConvertToRadians(60.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
+            XMConvertToRadians(60.0f), aspect, 0.1f, 100.0f);
 
         TransformCB cb;
         XMStoreFloat4x4(&cb.model,      model);

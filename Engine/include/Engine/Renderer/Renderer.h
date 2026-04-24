@@ -21,6 +21,9 @@ public:
     // Present the back buffer. Call at the end of each frame.
     void EndFrame();
 
+    // Rebuild swap chain buffers after a window resize.
+    void Resize(uint32_t width, uint32_t height);
+
     ID3D11Device*        GetDevice()  const { return m_device.Get(); }
     ID3D11DeviceContext* GetContext() const { return m_context.Get(); }
 
