@@ -9,6 +9,7 @@
 #include "Engine/Renderer/IndexBuffer.h"
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/Texture2D.h"
+#include "Engine/Renderer/SamplerState.h"
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -33,7 +34,7 @@ public:
     {
         ID3D11Device* device = GetRenderer().GetDevice();
 
-        // ---- Shaders — now live in Engine/Shaders/ ----
+        // ---- Shaders ----
         ComPtr<ID3DBlob> vsBlob, psBlob, errBlob;
         UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
 #ifdef SE_DEBUG
@@ -50,7 +51,6 @@ public:
         SE_HR(device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_vs));
         SE_HR(device->CreatePixelShader(psBlob->GetBufferPointer(),  psBlob->GetBufferSize(), nullptr, &m_ps));
 
-        // ---- Input layout ----
         D3D11_INPUT_ELEMENT_DESC layoutDesc[] =
         {
             { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
@@ -59,13 +59,13 @@ public:
         SE_HR(device->CreateInputLayout(layoutDesc, 2,
             vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_layout));
 
-        // ---- Quad ----
+        // UVs go 0→2 so address mode differences are obvious.
         Vertex verts[] =
         {
             { -0.5f,  0.5f, 0.0f,   0.0f, 0.0f },
-            {  0.5f,  0.5f, 0.0f,   1.0f, 0.0f },
-            { -0.5f, -0.5f, 0.0f,   0.0f, 1.0f },
-            {  0.5f, -0.5f, 0.0f,   1.0f, 1.0f },
+            {  0.5f,  0.5f, 0.0f,   2.0f, 0.0f },
+            { -0.5f, -0.5f, 0.0f,   0.0f, 2.0f },
+            {  0.5f, -0.5f, 0.0f,   2.0f, 2.0f },
         };
         uint32_t indices[] = { 0, 1, 2,   1, 3, 2 };
 
@@ -73,21 +73,16 @@ public:
         if (!m_ib.Create(device, indices, 6))                           return false;
         if (!m_transformCB.Create(device))                              return false;
 
-        // ---- Load concrete BaseColor texture via WIC ----
         if (!m_texture.LoadFromFile(device,
             L"Assets/Textures/Stained_Concrete_Ceiling_ueydffrdy_1K_BaseColor.jpg"))
             return false;
 
-        // ---- Linear wrap sampler ----
-        D3D11_SAMPLER_DESC sd = {};
-        sd.Filter   = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-        sd.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
-        sd.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
-        sd.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
-        sd.MaxLOD   = D3D11_FLOAT32_MAX;
-        SE_HR(device->CreateSamplerState(&sd, &m_sampler));
+        // Three samplers to compare side by side.
+        if (!m_pointWrap.Create(device,   { SE::FilterMode::Point,      SE::AddressMode::Wrap  })) return false;
+        if (!m_linearWrap.Create(device,  { SE::FilterMode::Trilinear,  SE::AddressMode::Wrap  })) return false;
+        if (!m_linearClamp.Create(device, { SE::FilterMode::Trilinear,  SE::AddressMode::Clamp })) return false;
 
-        SE_LOG_INFO("TestScene ready — concrete texture loaded");
+        SE_LOG_INFO("TestScene ready — sampler comparison");
         return true;
     }
 
@@ -95,50 +90,63 @@ protected:
     void OnUpdate() override
     {
         ID3D11DeviceContext* ctx = GetRenderer().GetContext();
-        float t = static_cast<float>(GetClock().GetTotalTime());
 
-        XMMATRIX model = XMMatrixRotationY(t);
-        XMMATRIX view  = XMMatrixLookAtLH(
-            XMVectorSet(0.0f, 0.5f, -2.0f, 1.0f),
+        XMMATRIX view = XMMatrixLookAtLH(
+            XMVectorSet(0.0f, 0.0f, -3.5f, 1.0f),
             XMVectorSet(0.0f, 0.0f,  0.0f, 1.0f),
             XMVectorSet(0.0f, 1.0f,  0.0f, 0.0f));
-        XMMATRIX proj  = XMMatrixPerspectiveFovLH(
+        XMMATRIX proj = XMMatrixPerspectiveFovLH(
             XMConvertToRadians(60.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
 
+        ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        ctx->IASetInputLayout(m_layout.Get());
+        ctx->VSSetShader(m_vs.Get(), nullptr, 0);
+        ctx->PSSetShader(m_ps.Get(), nullptr, 0);
+        m_vb.Bind(ctx);
+        m_ib.Bind(ctx);
+        m_texture.BindPS(ctx, 0);
+
+        // Left — Point filter + Wrap (pixelated, tiling)
+        DrawQuad(ctx, XMMatrixTranslation(-1.3f, 0.0f, 0.0f), view, proj, m_pointWrap);
+
+        // Centre — Trilinear + Wrap (smooth, tiling)
+        DrawQuad(ctx, XMMatrixTranslation( 0.0f, 0.0f, 0.0f), view, proj, m_linearWrap);
+
+        // Right — Trilinear + Clamp (smooth, edge stretched)
+        DrawQuad(ctx, XMMatrixTranslation( 1.3f, 0.0f, 0.0f), view, proj, m_linearClamp);
+    }
+
+private:
+    void DrawQuad(ID3D11DeviceContext* ctx,
+                  XMMATRIX model, XMMATRIX view, XMMATRIX proj,
+                  const SE::SamplerState& sampler)
+    {
         TransformCB cb;
         XMStoreFloat4x4(&cb.model,      model);
         XMStoreFloat4x4(&cb.view,       view);
         XMStoreFloat4x4(&cb.projection, proj);
         m_transformCB.Update(ctx, cb);
         m_transformCB.BindVS(ctx, 0);
-
-        m_texture.BindPS(ctx, 0);
-        ctx->PSSetSamplers(0, 1, m_sampler.GetAddressOf());
-
-        ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        ctx->IASetInputLayout(m_layout.Get());
-        m_vb.Bind(ctx);
-        m_ib.Bind(ctx);
-        ctx->VSSetShader(m_vs.Get(), nullptr, 0);
-        ctx->PSSetShader(m_ps.Get(), nullptr, 0);
+        sampler.BindPS(ctx, 0);
         ctx->DrawIndexed(m_ib.GetCount(), 0, 0);
     }
 
-private:
     ComPtr<ID3D11VertexShader>      m_vs;
     ComPtr<ID3D11PixelShader>       m_ps;
     ComPtr<ID3D11InputLayout>       m_layout;
-    ComPtr<ID3D11SamplerState>      m_sampler;
     SE::VertexBuffer                m_vb;
     SE::IndexBuffer                 m_ib;
     SE::ConstantBuffer<TransformCB> m_transformCB;
     SE::Texture2D                   m_texture;
+    SE::SamplerState                m_pointWrap;
+    SE::SamplerState                m_linearWrap;
+    SE::SamplerState                m_linearClamp;
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
     SE::WindowDesc desc;
-    desc.title  = L"SlopEngine";
+    desc.title  = L"SlopEngine — M11: Sampler States";
     desc.width  = 1280;
     desc.height = 720;
 
