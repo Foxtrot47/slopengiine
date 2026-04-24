@@ -121,25 +121,26 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M09 | ~~Depth/stencil buffer; Z-test enabled~~ ✓ |
 | M10 | ~~Texture loading (WIC, Microsoft-native); textured quad~~ ✓ |
 | M11 | ~~Sampler states; UV wrap/clamp, min/mag/mip filter modes~~ ✓ |
-| M12 | Mesh class; OBJ import (tinyobjloader) |
+| M12 | ~~Mesh class + Assimp FBX import; mossy stone wall in test scene~~ ✓ |
 
-### Phase 3 — Lighting & Materials
-
-| # | Milestone |
-|---|---|
-| M13 | Blinn-Phong per-pixel lighting; directional light |
-| M14 | Point lights (up to 8, cbuffer array) |
-| M15 | Specular maps |
-| M16 | Normal maps (tangent-space, TBN construction in VS) |
-| M17 | Material struct (albedo, roughness, metallic — PBR-ready layout) |
-
-### Phase 4 — Input
+### Phase 3 — Debug UI & Input
 
 | # | Milestone |
 |---|---|
-| M18 | Raw Win32 keyboard + mouse input manager |
-| M19 | XInput gamepad support (axes, buttons, rumble) |
-| M20 | Input action map (bind logical actions to keys/buttons) |
+| M13 | ~~ImGui integration — DX11+Win32 backend, per-frame overlay~~ ✓ |
+| M14 | ~~Raw Win32 input — keyboard (WM_INPUT) + mouse delta/wheel~~ ✓ |
+| M15 | ~~Input action map — logical action bindings over raw key codes~~ ✓ |
+| M16 | XInput gamepad support (axes, buttons, rumble) |
+
+### Phase 4 — Lighting & Materials
+
+| # | Milestone |
+|---|---|
+| M17 | Blinn-Phong per-pixel lighting; directional light |
+| M18 | Point lights (up to 8, cbuffer array) |
+| M19 | Specular maps |
+| M20 | Normal maps (tangent-space, TBN construction in VS) |
+| M21 | Material struct (albedo, roughness, metallic — PBR-ready layout) |
 
 ### Phase 5 — Scene & Camera
 
