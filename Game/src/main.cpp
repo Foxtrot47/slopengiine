@@ -49,7 +49,6 @@ public:
         SE_HR(device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_vs));
         SE_HR(device->CreatePixelShader(psBlob->GetBufferPointer(),  psBlob->GetBufferSize(), nullptr, &m_ps));
 
-        // ---- Input layout ----
         D3D11_INPUT_ELEMENT_DESC layoutDesc[] =
         {
             { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,   0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
@@ -58,21 +57,32 @@ public:
         SE_HR(device->CreateInputLayout(layoutDesc, 2,
             vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_layout));
 
-        // ---- Quad geometry ----
-        Vertex verts[] =
+        // ---- Front quad (spinning, rainbow) ----
+        Vertex frontVerts[] =
         {
             { -0.5f,  0.5f, 0.0f,   1.0f, 0.3f, 0.3f, 1.0f },
             {  0.5f,  0.5f, 0.0f,   0.3f, 1.0f, 0.3f, 1.0f },
             { -0.5f, -0.5f, 0.0f,   0.3f, 0.3f, 1.0f, 1.0f },
             {  0.5f, -0.5f, 0.0f,   1.0f, 1.0f, 0.3f, 1.0f },
         };
+
+        // ---- Back quad (static, white, larger — sits behind the front one) ----
+        Vertex backVerts[] =
+        {
+            { -0.75f,  0.75f, 0.0f,   1.0f, 1.0f, 1.0f, 1.0f },
+            {  0.75f,  0.75f, 0.0f,   1.0f, 1.0f, 1.0f, 1.0f },
+            { -0.75f, -0.75f, 0.0f,   1.0f, 1.0f, 1.0f, 1.0f },
+            {  0.75f, -0.75f, 0.0f,   1.0f, 1.0f, 1.0f, 1.0f },
+        };
+
         uint32_t indices[] = { 0, 1, 2,   1, 3, 2 };
 
-        if (!m_vb.Create(device, verts, sizeof(verts), sizeof(Vertex))) return false;
-        if (!m_ib.Create(device, indices, 6))                           return false;
-        if (!m_transformCB.Create(device))                              return false;
+        if (!m_frontVB.Create(device, frontVerts, sizeof(frontVerts), sizeof(Vertex))) return false;
+        if (!m_backVB.Create(device,  backVerts,  sizeof(backVerts),  sizeof(Vertex))) return false;
+        if (!m_ib.Create(device, indices, 6))     return false;
+        if (!m_transformCB.Create(device))        return false;
 
-        SE_LOG_INFO("TestScene ready");
+        SE_LOG_INFO("TestScene ready — two quads, depth test active");
         return true;
     }
 
@@ -82,42 +92,55 @@ protected:
         ID3D11DeviceContext* ctx = GetRenderer().GetContext();
         float t = static_cast<float>(GetClock().GetTotalTime());
 
-        // Model: spin around Y axis over time.
-        XMMATRIX model = XMMatrixRotationY(t);
-
-        // View: camera sitting slightly back and above, looking at origin.
-        XMMATRIX view  = XMMatrixLookAtLH(
-            XMVectorSet(0.0f, 0.8f, -2.0f, 1.0f),
+        XMMATRIX view = XMMatrixLookAtLH(
+            XMVectorSet(0.0f, 0.8f, -2.5f, 1.0f),
             XMVectorSet(0.0f, 0.0f,  0.0f, 1.0f),
             XMVectorSet(0.0f, 1.0f,  0.0f, 0.0f));
 
-        // Projection: 60° FOV, 16:9, near=0.1, far=100.
-        XMMATRIX proj  = XMMatrixPerspectiveFovLH(
+        XMMATRIX proj = XMMatrixPerspectiveFovLH(
             XMConvertToRadians(60.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
 
-        TransformCB cb;
-        XMStoreFloat4x4(&cb.model,      model);
-        XMStoreFloat4x4(&cb.view,       view);
-        XMStoreFloat4x4(&cb.projection, proj);
-
-        m_transformCB.Update(ctx, cb);
-        m_transformCB.BindVS(ctx, 0);
-
+        // Shared pipeline state
         ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         ctx->IASetInputLayout(m_layout.Get());
-        m_vb.Bind(ctx);
-        m_ib.Bind(ctx);
         ctx->VSSetShader(m_vs.Get(), nullptr, 0);
         ctx->PSSetShader(m_ps.Get(), nullptr, 0);
-        ctx->DrawIndexed(m_ib.GetCount(), 0, 0);
+        m_ib.Bind(ctx);
+
+        // ---- Back quad: static, pushed 1 unit behind origin ----
+        {
+            XMMATRIX model = XMMatrixTranslation(0.0f, 0.0f, 1.0f);
+            TransformCB cb;
+            XMStoreFloat4x4(&cb.model,      model);
+            XMStoreFloat4x4(&cb.view,       view);
+            XMStoreFloat4x4(&cb.projection, proj);
+            m_transformCB.Update(ctx, cb);
+            m_transformCB.BindVS(ctx, 0);
+            m_backVB.Bind(ctx);
+            ctx->DrawIndexed(m_ib.GetCount(), 0, 0);
+        }
+
+        // ---- Front quad: spinning at origin ----
+        {
+            XMMATRIX model = XMMatrixRotationY(t);
+            TransformCB cb;
+            XMStoreFloat4x4(&cb.model,      model);
+            XMStoreFloat4x4(&cb.view,       view);
+            XMStoreFloat4x4(&cb.projection, proj);
+            m_transformCB.Update(ctx, cb);
+            m_transformCB.BindVS(ctx, 0);
+            m_frontVB.Bind(ctx);
+            ctx->DrawIndexed(m_ib.GetCount(), 0, 0);
+        }
     }
 
 private:
-    ComPtr<ID3D11VertexShader>  m_vs;
-    ComPtr<ID3D11PixelShader>   m_ps;
-    ComPtr<ID3D11InputLayout>   m_layout;
-    SE::VertexBuffer            m_vb;
-    SE::IndexBuffer             m_ib;
+    ComPtr<ID3D11VertexShader>      m_vs;
+    ComPtr<ID3D11PixelShader>       m_ps;
+    ComPtr<ID3D11InputLayout>       m_layout;
+    SE::VertexBuffer                m_frontVB;
+    SE::VertexBuffer                m_backVB;
+    SE::IndexBuffer                 m_ib;
     SE::ConstantBuffer<TransformCB> m_transformCB;
 };
 

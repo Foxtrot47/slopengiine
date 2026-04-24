@@ -28,7 +28,6 @@ bool Renderer::Initialize(HWND hwnd, uint32_t width, uint32_t height)
     };
     D3D_FEATURE_LEVEL achievedLevel = {};
 
-    // Try with debug layer first; fall back silently if the SDK isn't installed.
     UINT flags = 0;
 #ifdef SE_DEBUG
     flags |= D3D11_CREATE_DEVICE_DEBUG;
@@ -59,12 +58,39 @@ bool Renderer::Initialize(HWND hwnd, uint32_t width, uint32_t height)
         return false;
     }
 
-    // Create render target view from the swap chain back buffer.
+    // ---- Render target view ----
     ComPtr<ID3D11Texture2D> backBuffer;
     SE_HR(m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer)));
     SE_HR(m_device->CreateRenderTargetView(backBuffer.Get(), nullptr, &m_rtv));
 
-    // Set a full-window viewport — stays fixed until we add resize support.
+    // ---- Depth/stencil texture + view ----
+    D3D11_TEXTURE2D_DESC depthDesc  = {};
+    depthDesc.Width                 = width;
+    depthDesc.Height                = height;
+    depthDesc.MipLevels             = 1;
+    depthDesc.ArraySize             = 1;
+    depthDesc.Format                = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depthDesc.SampleDesc.Count      = 1;
+    depthDesc.SampleDesc.Quality    = 0;
+    depthDesc.Usage                 = D3D11_USAGE_DEFAULT;
+    depthDesc.BindFlags             = D3D11_BIND_DEPTH_STENCIL;
+    SE_HR(m_device->CreateTexture2D(&depthDesc, nullptr, &m_depthTex));
+
+    D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+    dsvDesc.Format                        = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    dsvDesc.ViewDimension                 = D3D11_DSV_DIMENSION_TEXTURE2D;
+    dsvDesc.Texture2D.MipSlice            = 0;
+    SE_HR(m_device->CreateDepthStencilView(m_depthTex.Get(), &dsvDesc, &m_dsv));
+
+    // ---- Depth stencil state — Z-test on, write enabled ----
+    D3D11_DEPTH_STENCIL_DESC dsDesc = {};
+    dsDesc.DepthEnable              = TRUE;
+    dsDesc.DepthWriteMask           = D3D11_DEPTH_WRITE_MASK_ALL;
+    dsDesc.DepthFunc                = D3D11_COMPARISON_LESS;
+    dsDesc.StencilEnable            = FALSE;
+    SE_HR(m_device->CreateDepthStencilState(&dsDesc, &m_depthState));
+
+    // ---- Viewport ----
     D3D11_VIEWPORT vp = {};
     vp.Width          = static_cast<float>(width);
     vp.Height         = static_cast<float>(height);
@@ -79,6 +105,9 @@ bool Renderer::Initialize(HWND hwnd, uint32_t width, uint32_t height)
 
 void Renderer::Shutdown()
 {
+    m_depthState.Reset();
+    m_dsv.Reset();
+    m_depthTex.Reset();
     m_rtv.Reset();
     m_swapChain.Reset();
     m_context.Reset();
@@ -90,13 +119,14 @@ void Renderer::BeginFrame(float r, float g, float b, float a)
 {
     float color[4] = { r, g, b, a };
     m_context->ClearRenderTargetView(m_rtv.Get(), color);
-    m_context->OMSetRenderTargets(1, m_rtv.GetAddressOf(), nullptr);
+    m_context->ClearDepthStencilView(m_dsv.Get(),
+        D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+    m_context->OMSetRenderTargets(1, m_rtv.GetAddressOf(), m_dsv.Get());
+    m_context->OMSetDepthStencilState(m_depthState.Get(), 0);
 }
 
 void Renderer::EndFrame()
 {
-    // SyncInterval 1 = vsync on. This is also what locks us to ~60/144 fps
-    // instead of the 3M fps we saw in M04.
     m_swapChain->Present(1, 0);
 }
 
