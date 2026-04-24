@@ -91,6 +91,11 @@ public:
             L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_BaseColor.jpg"))
             return false;
 
+        // ---- Load Roughness texture ----
+        if (!m_roughness.LoadFromFile(device,
+            L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_Roughness.jpg"))
+            return false;
+
         // ---- Anisotropic sampler — this is the game-quality default ----
         if (!m_sampler.Create(device, { SE::FilterMode::Anisotropic, SE::AddressMode::Wrap }))
             return false;
@@ -298,8 +303,9 @@ protected:
             m_pointLightCB.Update(ctx, pl);
             m_pointLightCB.BindPS(ctx, 2);
         }
-
+        
         m_texture.BindPS(ctx, 0);
+        m_roughness.BindPS(ctx, 1);
         m_sampler.BindPS(ctx, 0);
 
         ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -319,11 +325,12 @@ private:
     SE::ConstantBuffer<LightCB>       m_lightCB;
     SE::ConstantBuffer<PointLightCB>  m_pointLightCB;
     SE::Texture2D                     m_texture;
-    SE::SamplerState                m_sampler;
+    SE::Texture2D                     m_roughness;
+    SE::SamplerState                  m_sampler;
 
-    float          m_scale    = 0.02f;
-    float          m_rotSpeed = 0.4f;
-    float          m_rotAngle = 0.0f;
+    float          m_scale     = 0.02f;
+    float          m_rotSpeed  = 0.4f;
+    float          m_rotAngle  = 0.0f;
     SE::ActionMap  m_actions;
 
     float m_lightElev    =  35.0f;

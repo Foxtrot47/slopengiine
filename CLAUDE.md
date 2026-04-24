@@ -138,7 +138,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 |---|---|
 | M17 | ~~Blinn-Phong per-pixel lighting; directional light~~ ✓ |
 | M18 | ~~Point lights (up to 8, cbuffer array)~~ ✓ |
-| M19 | Specular maps |
+| M19 | ~~Specular maps~~ ✓ |
 | M20 | Normal maps (tangent-space, TBN construction in VS) |
 | M21 | Material struct (albedo, roughness, metallic — PBR-ready layout) |
 

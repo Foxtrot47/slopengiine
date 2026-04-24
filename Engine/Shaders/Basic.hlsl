@@ -34,8 +34,9 @@ cbuffer PointLightCB : register(b2)
     float3     _plpad;
 };
 
-Texture2D    g_texture : register(t0);
-SamplerState g_sampler : register(s0);
+Texture2D    g_texture   : register(t0);
+Texture2D    g_roughness : register(t1);
+SamplerState g_sampler   : register(s0);
 
 struct VSIn
 {
@@ -65,15 +66,18 @@ PSIn VS_Main(VSIn input)
 
 float4 PS_Main(PSIn input) : SV_TARGET
 {
-    float3 N      = normalize(input.Normal);
-    float3 V      = normalize(CameraPos - input.WorldPos);
-    float4 albedo = g_texture.Sample(g_sampler, input.TexCoord);
+    float3 N         = normalize(input.Normal);
+    float3 V         = normalize(CameraPos - input.WorldPos);
+    float4 albedo    = g_texture.Sample(g_sampler, input.TexCoord);
+    float  roughness = g_roughness.Sample(g_sampler, input.TexCoord).r;
+    float  specMask  = 1.0f - roughness;
+    float  pixShine  = max(1.0f, Shininess * specMask);
 
     // Directional light
     float3 L    = normalize(LightDir);
     float3 H    = normalize(L + V);
     float  diff = max(dot(N, L), 0.0f);
-    float  spec = (diff > 0.0f) ? pow(max(dot(N, H), 0.0f), Shininess) : 0.0f;
+    float  spec = (diff > 0.0f) ? pow(max(dot(N, H), 0.0f), pixShine) * specMask : 0.0f;
 
     float3 color = AmbientColor * albedo.rgb
                  + LightColor   * diff * albedo.rgb
@@ -86,14 +90,13 @@ float4 PS_Main(PSIn input) : SV_TARGET
         float  dist    = length(toLight);
         if (dist >= PointLights[i].Radius) continue;
 
-        // Smooth quadratic falloff — 1 at center, 0 at radius
         float  atten = 1.0f - (dist / PointLights[i].Radius);
         atten        = atten * atten;
 
-        float3 PL   = toLight / dist;
-        float3 PH   = normalize(PL + V);
-        float  pd   = max(dot(N, PL), 0.0f);
-        float  ps   = (pd > 0.0f) ? pow(max(dot(N, PH), 0.0f), Shininess) : 0.0f;
+        float3 PL = toLight / dist;
+        float3 PH = normalize(PL + V);
+        float  pd = max(dot(N, PL), 0.0f);
+        float  ps = (pd > 0.0f) ? pow(max(dot(N, PH), 0.0f), pixShine) * specMask : 0.0f;
 
         color += PointLights[i].Color * atten * (pd * albedo.rgb + ps * 0.4f);
     }
