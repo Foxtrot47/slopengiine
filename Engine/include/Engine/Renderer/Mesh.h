@@ -10,9 +10,11 @@ namespace SE {
 // Matches the POSITION/NORMAL/TEXCOORD input layout in Basic.hlsl.
 struct MeshVertex
 {
-    float x,  y,  z;   // POSITION
-    float nx, ny, nz;  // NORMAL
-    float u,  v;       // TEXCOORD
+    float x,  y,  z;    // POSITION
+    float nx, ny, nz;   // NORMAL
+    float u,  v;        // TEXCOORD
+    float tx, ty, tz;   // TANGENT
+    float bx, by, bz;   // BINORMAL (bitangent)
 };
 
 class Mesh
