@@ -10,6 +10,7 @@
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/Texture2D.h"
 #include "Engine/Renderer/SamplerState.h"
+#include "Engine/Renderer/Material.h"
 #include "Engine/Input/ActionMap.h"
 #include "Engine/Input/GamepadState.h"
 
@@ -88,20 +89,14 @@ public:
         if (!m_mesh.Load(device, "Assets/Meshes/Mossy_Stone_Wall_ukhgdfyga_Low.fbx"))
             return false;
 
-        // ---- Load BaseColor texture ----
-        if (!m_texture.LoadFromFile(device,
-            L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_BaseColor.jpg"))
-            return false;
-
-        // ---- Load Roughness texture ----
-        if (!m_roughness.LoadFromFile(device,
-            L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_Roughness.jpg"))
-            return false;
-
-        // ---- Load Normal map ----
-        if (!m_normalMap.LoadFromFile(device,
-            L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_Normal.jpg"))
-            return false;
+        // ---- Wall material ----
+        if (!m_wallMat.Create(device))  return false;
+        if (!m_wallMat.LoadAlbedo(device,
+            L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_BaseColor.jpg"))    return false;
+        if (!m_wallMat.LoadRoughness(device,
+            L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_Roughness.jpg"))   return false;
+        if (!m_wallMat.LoadNormal(device,
+            L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_Normal.jpg"))      return false;
 
         // ---- Anisotropic sampler — this is the game-quality default ----
         if (!m_sampler.Create(device, { SE::FilterMode::Anisotropic, SE::AddressMode::Wrap }))
@@ -168,6 +163,11 @@ protected:
         ImGui::Separator();
         ImGui::SliderFloat("Scale",     &m_scale,    0.001f, 0.1f, "%.4f");
         ImGui::SliderFloat("Rot Speed", &m_rotSpeed, 0.0f,   3.0f);
+        ImGui::Separator();
+        ImGui::Text("Wall Material");
+        ImGui::ColorEdit3("Albedo Tint",      m_wallMat.albedoTint);
+        ImGui::SliderFloat("Roughness Scale", &m_wallMat.roughnessScale, 0.0f, 2.0f);
+        ImGui::SliderFloat("Metallic",        &m_wallMat.metallic,       0.0f, 1.0f);
         ImGui::Separator();
         ImGui::Text("Lighting");
         ImGui::SliderFloat("Elevation", &m_lightElev,  -90.0f, 90.0f,  "%.1f deg");
@@ -311,9 +311,7 @@ protected:
             m_pointLightCB.BindPS(ctx, 2);
         }
         
-        m_texture.BindPS(ctx, 0);
-        m_roughness.BindPS(ctx, 1);
-        m_normalMap.BindPS(ctx, 2);
+        m_wallMat.Bind(ctx);
         m_sampler.BindPS(ctx, 0);
 
         ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -332,9 +330,7 @@ private:
     SE::ConstantBuffer<TransformCB>   m_transformCB;
     SE::ConstantBuffer<LightCB>       m_lightCB;
     SE::ConstantBuffer<PointLightCB>  m_pointLightCB;
-    SE::Texture2D                     m_texture;
-    SE::Texture2D                     m_roughness;
-    SE::Texture2D                     m_normalMap;
+    SE::Material                      m_wallMat;
     SE::SamplerState                  m_sampler;
 
     float          m_scale     = 0.02f;

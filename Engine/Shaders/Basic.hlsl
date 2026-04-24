@@ -32,6 +32,12 @@ cbuffer PointLightCB : register(b2)
     float3     _plpad;
 };
 
+cbuffer MaterialCB : register(b3)
+{
+    float3 AlbedoTint;     float  RoughnessScale;
+    float  Metallic;       float3 _mat_pad;
+};
+
 Texture2D    g_albedo    : register(t0);
 Texture2D    g_roughness : register(t1);
 Texture2D    g_normal    : register(t2);
@@ -80,9 +86,14 @@ float4 PS_Main(PSIn input) : SV_TARGET
 
     float3 V         = normalize(CameraPos - input.WorldPos);
     float4 albedo    = g_albedo.Sample(g_sampler, input.TexCoord);
-    float  roughness = g_roughness.Sample(g_sampler, input.TexCoord).r;
-    float  specMask  = 1.0f - roughness;
+    albedo.rgb      *= AlbedoTint;
+    float  roughness = g_roughness.Sample(g_sampler, input.TexCoord).r * RoughnessScale;
+    float  specMask  = 1.0f - saturate(roughness);
     float  pixShine  = max(1.0f, Shininess * specMask);
+
+    // Metallic workflow: specular colour blends toward albedo; diffuse killed for metals
+    float3 F0    = lerp(float3(0.04f, 0.04f, 0.04f), albedo.rgb, Metallic);
+    float  kDiff = 1.0f - Metallic;
 
     // Directional light
     float3 L    = normalize(LightDir);
@@ -91,8 +102,8 @@ float4 PS_Main(PSIn input) : SV_TARGET
     float  spec = (diff > 0.0f) ? pow(max(dot(N, H), 0.0f), pixShine) * specMask : 0.0f;
 
     float3 color = AmbientColor * albedo.rgb
-                 + LightColor   * diff * albedo.rgb
-                 + LightColor   * spec * 0.4f;
+                 + LightColor * diff * kDiff * albedo.rgb
+                 + LightColor * spec * F0;
 
     // Point lights
     for (int i = 0; i < NumPointLights; ++i)
@@ -109,7 +120,7 @@ float4 PS_Main(PSIn input) : SV_TARGET
         float  pd = max(dot(N, PL), 0.0f);
         float  ps = (pd > 0.0f) ? pow(max(dot(N, PH), 0.0f), pixShine) * specMask : 0.0f;
 
-        color += PointLights[i].Color * atten * (pd * albedo.rgb + ps * 0.4f);
+        color += PointLights[i].Color * atten * (pd * kDiff * albedo.rgb + ps * F0);
     }
 
     return float4(color, albedo.a);

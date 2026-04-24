@@ -140,7 +140,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M18 | ~~Point lights (up to 8, cbuffer array)~~ ✓ |
 | M19 | ~~Specular maps~~ ✓ |
 | M20 | ~~Normal maps (tangent-space, TBN construction in VS)~~ ✓ |
-| M21 | Material struct (albedo, roughness, metallic — PBR-ready layout) |
+| M21 | ~~Material struct (albedo, roughness, metallic — PBR-ready layout)~~ ✓ |
 
 ### Phase 5 — Scene & Camera
 
