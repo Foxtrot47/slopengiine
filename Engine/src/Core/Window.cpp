@@ -37,7 +37,7 @@ bool Window::Open(const WindowDesc& desc)
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT,
         rc.right - rc.left, rc.bottom - rc.top,
-        nullptr, nullptr, hInst, nullptr);
+        nullptr, nullptr, hInst, this);  // lpParam = this for WndProc retrieval
 
     if (!m_hwnd)
         return false;
@@ -72,6 +72,17 @@ bool Window::PumpMessages()
 
 LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
+    // On creation, store the Window* passed as lpParam so we can reach it here.
+    if (msg == WM_NCCREATE)
+    {
+        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lp);
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
+    }
+
+    Window* self = reinterpret_cast<Window*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (self && self->m_msgHook)
+        if (self->m_msgHook(hwnd, msg, wp, lp)) return true;
+
     switch (msg)
     {
     case WM_DESTROY:

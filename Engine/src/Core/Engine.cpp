@@ -21,6 +21,15 @@ bool Engine::Initialize(const WindowDesc& windowDesc)
         return false;
     }
 
+    m_window.SetMessageHook(ImGuiLayer::WndProcHandler);
+    if (!m_imgui.Init(m_window.GetHandle(),
+                      m_renderer.GetDevice(),
+                      m_renderer.GetContext()))
+    {
+        SE_LOG_FATAL("Failed to initialise ImGui");
+        return false;
+    }
+
     SE_LOG_INFO("Engine initialised — %ux%u", windowDesc.width, windowDesc.height);
     return true;
 }
@@ -35,8 +44,10 @@ void Engine::Run()
     {
         m_clock.Tick();
 
-        m_renderer.BeginFrame(0.1f, 0.15f, 0.25f); // dark slate blue
+        m_renderer.BeginFrame(0.1f, 0.15f, 0.25f);
+        m_imgui.BeginFrame();
         OnUpdate();
+        m_imgui.EndFrame();
         m_renderer.EndFrame();
 
         fpsTimer += m_clock.GetDeltaTime();
@@ -57,6 +68,7 @@ void Engine::Run()
 
 void Engine::Shutdown()
 {
+    m_imgui.Shutdown();
     m_renderer.Shutdown();
     m_window.Close();
     Logger::Get().Shutdown();

@@ -3,6 +3,7 @@
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <DirectXMath.h>
+#include <imgui.h>
 #include "Engine/Core/Engine.h"
 #include "Engine/Core/Logger.h"
 #include "Engine/Renderer/Mesh.h"
@@ -79,9 +80,17 @@ protected:
         ID3D11DeviceContext* ctx = GetRenderer().GetContext();
         float t = static_cast<float>(GetClock().GetTotalTime());
 
-        // Scale the mesh down — FAB assets often export at real-world cm scale.
-        XMMATRIX model = XMMatrixScaling(0.02f, 0.02f, 0.02f)
-                       * XMMatrixRotationY(t * 0.4f);
+        // ---- Debug panel ----
+        ImGui::Begin("Scene");
+        ImGui::Text("%.1f fps  |  %.2f ms",
+                    GetClock().GetFPS(), GetClock().GetDeltaTime() * 1000.0f);
+        ImGui::Separator();
+        ImGui::SliderFloat("Scale",     &m_scale,    0.001f, 0.1f,  "%.4f");
+        ImGui::SliderFloat("Rot Speed", &m_rotSpeed, 0.0f,   3.0f);
+        ImGui::End();
+
+        XMMATRIX model = XMMatrixScaling(m_scale, m_scale, m_scale)
+                       * XMMatrixRotationY(t * m_rotSpeed);
         XMMATRIX view  = XMMatrixLookAtLH(
             XMVectorSet(0.0f, 2.0f, -10.0f, 1.0f),
             XMVectorSet(0.0f, 2.0f,   0.0f, 1.0f),
@@ -115,6 +124,9 @@ private:
     SE::ConstantBuffer<TransformCB> m_transformCB;
     SE::Texture2D                   m_texture;
     SE::SamplerState                m_sampler;
+
+    float m_scale    = 0.02f;
+    float m_rotSpeed = 0.4f;
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)

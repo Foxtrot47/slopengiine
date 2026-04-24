@@ -7,12 +7,15 @@ target_include_directories(FoxEngine
     PRIVATE src
 )
 
+find_package(imgui CONFIG REQUIRED)
+
 target_link_libraries(FoxEngine PUBLIC
     d3d11.lib
     dxgi.lib
     d3dcompiler.lib
     dxguid.lib
     assimp::assimp
+    imgui::imgui
 )
 
 target_compile_definitions(FoxEngine PUBLIC
