@@ -114,7 +114,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 
 | # | Milestone |
 |---|---|
-| M05 | D3D11 device + swap chain + render target view; clear to a color |
+| M05 | ~~D3D11 device + swap chain + render target view; clear to a color~~ ✓ |
 | M06 | First triangle — hardcoded vertices, passthrough HLSL |
 | M07 | Vertex/index buffer abstraction; indexed quad |
 | M08 | Constant buffers; per-object MVP transform |
