@@ -1,3 +1,10 @@
+cbuffer TransformCB : register(b0)
+{
+    row_major matrix Model;
+    row_major matrix View;
+    row_major matrix Projection;
+};
+
 struct VSIn
 {
     float3 Position : POSITION;
@@ -13,7 +20,11 @@ struct PSIn
 PSIn VS_Main(VSIn input)
 {
     PSIn output;
-    output.Position = float4(input.Position, 1.0f);
+    float4 pos  = float4(input.Position, 1.0f);
+    pos         = mul(pos, Model);
+    pos         = mul(pos, View);
+    pos         = mul(pos, Projection);
+    output.Position = pos;
     output.Color    = input.Color;
     return output;
 }
