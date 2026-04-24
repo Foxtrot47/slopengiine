@@ -48,6 +48,12 @@ bool Mesh::Load(ID3D11Device* device, const char* path)
                 vtx.v = mesh->mTextureCoords[0][v].y;
             }
             else { vtx.u = vtx.v = 0.0f; }
+            vtx.tx = mesh->mTangents   ? mesh->mTangents[v].x   : 1.0f;
+            vtx.ty = mesh->mTangents   ? mesh->mTangents[v].y   : 0.0f;
+            vtx.tz = mesh->mTangents   ? mesh->mTangents[v].z   : 0.0f;
+            vtx.bx = mesh->mBitangents ? mesh->mBitangents[v].x : 0.0f;
+            vtx.by = mesh->mBitangents ? mesh->mBitangents[v].y : 1.0f;
+            vtx.bz = mesh->mBitangents ? mesh->mBitangents[v].z : 0.0f;
             verts.push_back(vtx);
         }
 

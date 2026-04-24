@@ -74,8 +74,10 @@ public:
             { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
             { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
             { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "TANGENT",  0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 44, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         };
-        SE_HR(device->CreateInputLayout(layoutDesc, 3,
+        SE_HR(device->CreateInputLayout(layoutDesc, 5,
             vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_layout));
 
         if (!m_transformCB.Create(device))   return false;
@@ -94,6 +96,11 @@ public:
         // ---- Load Roughness texture ----
         if (!m_roughness.LoadFromFile(device,
             L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_Roughness.jpg"))
+            return false;
+
+        // ---- Load Normal map ----
+        if (!m_normalMap.LoadFromFile(device,
+            L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_Normal.jpg"))
             return false;
 
         // ---- Anisotropic sampler — this is the game-quality default ----
@@ -306,6 +313,7 @@ protected:
         
         m_texture.BindPS(ctx, 0);
         m_roughness.BindPS(ctx, 1);
+        m_normalMap.BindPS(ctx, 2);
         m_sampler.BindPS(ctx, 0);
 
         ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -326,6 +334,7 @@ private:
     SE::ConstantBuffer<PointLightCB>  m_pointLightCB;
     SE::Texture2D                     m_texture;
     SE::Texture2D                     m_roughness;
+    SE::Texture2D                     m_normalMap;
     SE::SamplerState                  m_sampler;
 
     float          m_scale     = 0.02f;
