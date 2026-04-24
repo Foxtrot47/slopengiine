@@ -4,11 +4,16 @@
 int WINAPI WinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/,
                    LPSTR /*lpCmdLine*/, int /*nCmdShow*/)
 {
-    SE::Engine engine;
+    SE::WindowDesc desc;
+    desc.title  = L"SlopEngine";
+    desc.width  = 1280;
+    desc.height = 720;
 
-    if (!engine.Initialize())
+    SE::Engine engine;
+    if (!engine.Initialize(desc))
         return 1;
 
+    engine.Run();
     engine.Shutdown();
     return 0;
 }
