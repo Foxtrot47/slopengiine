@@ -1,6 +1,8 @@
 #include "Engine/Input/InputManager.h"
 #include "Engine/Core/Logger.h"
 #include <vector>
+#include <Xinput.h>
+#pragma comment(lib, "xinput.lib")
 
 namespace SE {
 
@@ -27,6 +29,55 @@ bool InputManager::Init(HWND hwnd)
     return true;
 }
 
+static float NormalizeStick(int16_t value, int16_t deadZone)
+{
+    if (value >  deadZone) return static_cast<float>(value - deadZone)  / (32767.0f - deadZone);
+    if (value < -deadZone) return static_cast<float>(value + deadZone)  / (32767.0f - deadZone);
+    return 0.0f;
+}
+
+static float NormalizeTrigger(uint8_t value)
+{
+    if (value <= XINPUT_GAMEPAD_TRIGGER_THRESHOLD) return 0.0f;
+    return static_cast<float>(value - XINPUT_GAMEPAD_TRIGGER_THRESHOLD)
+         / (255.0f - XINPUT_GAMEPAD_TRIGGER_THRESHOLD);
+}
+
+void InputManager::PollGamepads()
+{
+    for (uint32_t i = 0; i < k_MaxGamepads; ++i)
+    {
+        XINPUT_STATE xs = {};
+        bool connected  = (XInputGetState(i, &xs) == ERROR_SUCCESS);
+
+        GamepadState& gs = m_gamepads[i];
+        gs.connected = connected;
+
+        if (!connected)
+        {
+            gs = GamepadState{};
+            m_prevButtons[i] = 0;
+            continue;
+        }
+
+        const XINPUT_GAMEPAD& xg = xs.Gamepad;
+
+        uint16_t cur = xg.wButtons;
+        uint16_t prev = m_prevButtons[i];
+        gs.buttonsHeld     = cur;
+        gs.buttonsPressed  = cur & ~prev;
+        gs.buttonsReleased = prev & ~cur;
+        m_prevButtons[i]   = cur;
+
+        gs.leftX  = NormalizeStick(xg.sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+        gs.leftY  = NormalizeStick(xg.sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+        gs.rightX = NormalizeStick(xg.sThumbRX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+        gs.rightY = NormalizeStick(xg.sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+        gs.leftTrigger  = NormalizeTrigger(xg.bLeftTrigger);
+        gs.rightTrigger = NormalizeTrigger(xg.bRightTrigger);
+    }
+}
+
 void InputManager::NewFrame()
 {
     memset(m_keyPressed,  0, sizeof(m_keyPressed));
@@ -34,11 +85,27 @@ void InputManager::NewFrame()
     m_mouseDX    = 0;
     m_mouseDY    = 0;
     m_mouseWheel = 0;
+    PollGamepads();
 }
 
 bool InputManager::IsKeyDown    (int vk) const { return vk >= 0 && vk < 256 && m_keyDown[vk];     }
 bool InputManager::IsKeyPressed (int vk) const { return vk >= 0 && vk < 256 && m_keyPressed[vk];  }
 bool InputManager::IsKeyReleased(int vk) const { return vk >= 0 && vk < 256 && m_keyReleased[vk]; }
+
+const GamepadState& InputManager::GetGamepad(uint32_t index) const
+{
+    static const GamepadState k_disconnected{};
+    return (index < k_MaxGamepads) ? m_gamepads[index] : k_disconnected;
+}
+
+void InputManager::SetRumble(uint32_t index, float leftMotor, float rightMotor)
+{
+    if (index >= k_MaxGamepads || !m_gamepads[index].connected) return;
+    XINPUT_VIBRATION vib;
+    vib.wLeftMotorSpeed  = static_cast<WORD>(leftMotor  * 65535.0f);
+    vib.wRightMotorSpeed = static_cast<WORD>(rightMotor * 65535.0f);
+    XInputSetState(index, &vib);
+}
 
 LRESULT InputManager::WndProcHandler(HWND /*hwnd*/, UINT msg, WPARAM wp, LPARAM lp)
 {

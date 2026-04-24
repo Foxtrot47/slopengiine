@@ -11,6 +11,7 @@
 #include "Engine/Renderer/Texture2D.h"
 #include "Engine/Renderer/SamplerState.h"
 #include "Engine/Input/ActionMap.h"
+#include "Engine/Input/GamepadState.h"
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -79,6 +80,13 @@ public:
         m_actions.Bind("ScaleUp",   VK_UP);
         m_actions.Bind("ScaleDown", VK_DOWN);
 
+        m_actions.BindGamepad("RotFaster", SE::GamepadButton::DpadRight);
+        m_actions.BindGamepad("RotFaster", SE::GamepadButton::RightShoulder);
+        m_actions.BindGamepad("RotSlower", SE::GamepadButton::DpadLeft);
+        m_actions.BindGamepad("RotSlower", SE::GamepadButton::LeftShoulder);
+        m_actions.BindGamepad("ScaleUp",   SE::GamepadButton::DpadUp);
+        m_actions.BindGamepad("ScaleDown", SE::GamepadButton::DpadDown);
+
         SE_LOG_INFO("TestScene ready — mossy stone wall");
         return true;
     }
@@ -98,6 +106,17 @@ protected:
         if (m_actions.IsHeld("ScaleUp"))    m_scale    = min(0.1f, m_scale    + dt * 0.01f);
         if (m_actions.IsHeld("ScaleDown"))  m_scale    = max(0.001f, m_scale  - dt * 0.01f);
 
+        // ---- Analog gamepad axes ----
+        const SE::GamepadState& gp = GetInput().GetGamepad(0);
+        if (gp.connected)
+        {
+            // Left stick X: direct rotation speed control
+            if (fabsf(gp.leftX) > 0.0f)
+                m_rotSpeed = max(0.0f, min(3.0f, m_rotSpeed + gp.leftX * dt * 3.0f));
+            // Triggers: scale up/down
+            m_scale = max(0.001f, min(0.1f, m_scale + (gp.rightTrigger - gp.leftTrigger) * dt * 0.05f));
+        }
+
         // ---- Debug panel ----
         const SE::InputManager& input = GetInput();
         ImGui::Begin("Scene");
@@ -111,6 +130,12 @@ protected:
         ImGui::Text("Actions  RotF:%d RotS:%d ScaleU:%d ScaleD:%d",
             m_actions.IsHeld("RotFaster"), m_actions.IsHeld("RotSlower"),
             m_actions.IsHeld("ScaleUp"),   m_actions.IsHeld("ScaleDown"));
+        if (gp.connected)
+            ImGui::Text("Pad0  L(%.2f,%.2f) R(%.2f,%.2f) LT:%.2f RT:%.2f",
+                gp.leftX, gp.leftY, gp.rightX, gp.rightY,
+                gp.leftTrigger, gp.rightTrigger);
+        else
+            ImGui::TextDisabled("Pad0  not connected");
         ImGui::End();
 
         XMMATRIX model = XMMatrixScaling(m_scale, m_scale, m_scale)

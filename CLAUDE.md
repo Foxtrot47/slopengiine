@@ -130,7 +130,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M13 | ~~ImGui integration — DX11+Win32 backend, per-frame overlay~~ ✓ |
 | M14 | ~~Raw Win32 input — keyboard (WM_INPUT) + mouse delta/wheel~~ ✓ |
 | M15 | ~~Input action map — logical action bindings over raw key codes~~ ✓ |
-| M16 | XInput gamepad support (axes, buttons, rumble) |
+| M16 | ~~XInput gamepad support (axes, buttons, rumble)~~ ✓ |
 
 ### Phase 4 — Lighting & Materials
 
