@@ -13,6 +13,8 @@
 #include "Engine/Renderer/Material.h"
 #include "Engine/Input/ActionMap.h"
 #include "Engine/Input/GamepadState.h"
+#include "Engine/Scene/Scene.h"
+#include "Engine/Scene/TransformComponent.h"
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -126,6 +128,11 @@ public:
         m_actions.BindGamepad("ScaleUp",   SE::GamepadButton::DpadUp);
         m_actions.BindGamepad("ScaleDown", SE::GamepadButton::DpadDown);
 
+        // ---- ECS setup ----
+        SE::Entity* wallEntity = m_scene.CreateEntity("Wall");
+        m_wallTransform = wallEntity->AddComponent<SE::TransformComponent>();
+        m_wallTransform->scale = m_scale;
+
         SE_LOG_INFO("TestScene ready — mossy stone wall");
         return true;
     }
@@ -145,6 +152,10 @@ protected:
         if (m_actions.IsHeld("ScaleUp"))    m_scale    = min(0.1f, m_scale    + dt * 0.01f);
         if (m_actions.IsHeld("ScaleDown"))  m_scale    = max(0.001f, m_scale  - dt * 0.01f);
 
+        m_wallTransform->eulerDeg.y = XMConvertToDegrees(m_rotAngle);
+        m_wallTransform->scale      = m_scale;
+        m_scene.Update(dt);
+
         // ---- Analog gamepad axes ----
         const SE::GamepadState& gp = GetInput().GetGamepad(0);
         if (gp.connected)
@@ -163,6 +174,10 @@ protected:
         ImGui::Separator();
         ImGui::SliderFloat("Scale",     &m_scale,    0.001f, 0.1f, "%.4f");
         ImGui::SliderFloat("Rot Speed", &m_rotSpeed, 0.0f,   3.0f);
+        ImGui::Separator();
+        ImGui::Text("Entities (%zu)", m_scene.GetEntities().size());
+        for (const auto& e : m_scene.GetEntities())
+            ImGui::Text("  [%u] %s%s", e->GetID(), e->GetName().c_str(), e->active ? "" : " (inactive)");
         ImGui::Separator();
         ImGui::Text("Wall Material");
         ImGui::ColorEdit3("Albedo Tint",      m_wallMat.albedoTint);
@@ -198,8 +213,7 @@ protected:
             ImGui::TextDisabled("Pad0  not connected");
         ImGui::End();
 
-        XMMATRIX model = XMMatrixScaling(m_scale, m_scale, m_scale)
-                       * XMMatrixRotationY(m_rotAngle);
+        XMMATRIX model = m_wallTransform->GetMatrix();
         XMMATRIX view  = XMMatrixLookAtLH(
             XMVectorSet(0.0f, 2.0f, -10.0f, 1.0f),
             XMVectorSet(0.0f, 2.0f,   0.0f, 1.0f),
@@ -337,6 +351,8 @@ private:
     float          m_rotSpeed  = 0.4f;
     float          m_rotAngle  = 0.0f;
     SE::ActionMap  m_actions;
+    SE::Scene      m_scene;
+    SE::TransformComponent* m_wallTransform = nullptr;
 
     float m_lightElev    =  35.0f;
     float m_lightAzim    =  45.0f;
