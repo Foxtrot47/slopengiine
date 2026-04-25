@@ -13,6 +13,7 @@
 #include "Engine/Renderer/Material.h"
 #include "Engine/Input/ActionMap.h"
 #include "Engine/Input/GamepadState.h"
+#include "Engine/Assets/AssetManager.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/TransformComponent.h"
 #include "Engine/Scene/CameraComponent.h"
@@ -90,9 +91,9 @@ public:
         if (!m_lightCB.Create(device))       return false;
         if (!m_pointLightCB.Create(device))  return false;
 
-        // ---- Load FBX mesh ----
-        if (!m_mesh.Load(device, "Assets/Meshes/Mossy_Stone_Wall_ukhgdfyga_Low.fbx"))
-            return false;
+        // ---- Load FBX mesh via asset manager ----
+        m_mesh = GetAssets().GetMesh("Assets/Meshes/Mossy_Stone_Wall_ukhgdfyga_Low.fbx");
+        if (!m_mesh) return false;
 
         // ---- Wall material ----
         if (!m_wallMat.Create(device))  return false;
@@ -230,6 +231,9 @@ protected:
         ImGui::Separator();
         ImGui::SliderFloat("Scale",     &m_scale,    0.001f, 0.1f, "%.4f");
         ImGui::SliderFloat("Rot Speed", &m_rotSpeed, 0.0f,   3.0f);
+        ImGui::Separator();
+        ImGui::Text("Assets  meshes:%u  textures:%u",
+            GetAssets().CachedMeshCount(), GetAssets().CachedTextureCount());
         ImGui::Separator();
         ImGui::Text("Entities (%zu)", m_scene.GetEntities().size());
         for (const auto& e : m_scene.GetEntities())
@@ -381,19 +385,19 @@ protected:
         XMStoreFloat4x4(&cb.model, m_wallTransform->GetWorldMatrix());
         m_transformCB.Update(ctx, cb);
         m_transformCB.BindVS(ctx, 0);
-        m_mesh.Draw(ctx);
+        m_mesh->Draw(ctx);
 
         XMStoreFloat4x4(&cb.model, m_pivotTransform->GetWorldMatrix());
         m_transformCB.Update(ctx, cb);
         m_transformCB.BindVS(ctx, 0);
-        m_mesh.Draw(ctx);
+        m_mesh->Draw(ctx);
     }
 
 private:
     ComPtr<ID3D11VertexShader>      m_vs;
     ComPtr<ID3D11PixelShader>       m_ps;
     ComPtr<ID3D11InputLayout>       m_layout;
-    SE::Mesh                        m_mesh;
+    SE::AssetHandle<SE::Mesh>       m_mesh;
     SE::ConstantBuffer<TransformCB>   m_transformCB;
     SE::ConstantBuffer<LightCB>       m_lightCB;
     SE::ConstantBuffer<PointLightCB>  m_pointLightCB;

@@ -5,6 +5,7 @@
 #include "Engine/Core/ImGuiLayer.h"
 #include "Engine/Renderer/Renderer.h"
 #include "Engine/Input/InputManager.h"
+#include "Engine/Assets/AssetManager.h"
 
 namespace SE {
 
@@ -24,6 +25,7 @@ public:
     ImGuiLayer&          GetImGui()    { return m_imgui; }
     InputManager&        GetInput()          { return m_input; }
     const InputManager&  GetInput()    const { return m_input; }
+    AssetManager&        GetAssets()         { return m_assets; }
 
 protected:
     virtual void OnUpdate() {}
@@ -34,6 +36,7 @@ private:
     Renderer      m_renderer;
     ImGuiLayer    m_imgui;
     InputManager  m_input;
+    AssetManager  m_assets;
 };
 
 } // namespace SE

@@ -1,0 +1,62 @@
+#include "Engine/Assets/AssetManager.h"
+#include "Engine/Core/Logger.h"
+
+namespace SE {
+
+void AssetManager::Init(ID3D11Device* device)
+{
+    m_device = device;
+    SE_LOG_INFO("AssetManager initialised");
+}
+
+AssetHandle<Mesh> AssetManager::GetMesh(const std::string& path)
+{
+    auto it = m_meshes.find(path);
+    if (it != m_meshes.end())
+        if (auto h = it->second.lock()) return h;
+
+    auto mesh = std::make_shared<Mesh>();
+    if (!mesh->Load(m_device, path.c_str()))
+    {
+        SE_LOG_ERROR("AssetManager: failed to load mesh '%s'", path.c_str());
+        return nullptr;
+    }
+    m_meshes[path] = mesh;
+    SE_LOG_INFO("AssetManager: loaded mesh '%s'", path.c_str());
+    return mesh;
+}
+
+AssetHandle<Texture2D> AssetManager::GetTexture(const std::wstring& path)
+{
+    auto it = m_textures.find(path);
+    if (it != m_textures.end())
+        if (auto h = it->second.lock()) return h;
+
+    auto tex = std::make_shared<Texture2D>();
+    if (!tex->LoadFromFile(m_device, path.c_str()))
+    {
+        SE_LOG_ERROR("AssetManager: failed to load texture");
+        return nullptr;
+    }
+    m_textures[path] = tex;
+    SE_LOG_INFO("AssetManager: loaded texture");
+    return tex;
+}
+
+uint32_t AssetManager::CachedMeshCount() const
+{
+    uint32_t n = 0;
+    for (auto& [k, w] : m_meshes)
+        if (!w.expired()) ++n;
+    return n;
+}
+
+uint32_t AssetManager::CachedTextureCount() const
+{
+    uint32_t n = 0;
+    for (auto& [k, w] : m_textures)
+        if (!w.expired()) ++n;
+    return n;
+}
+
+} // namespace SE
