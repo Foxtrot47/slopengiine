@@ -167,7 +167,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M29 | ~~Math primitives (AABB, Sphere, Ray, Plane) + narrowphase + ray tests~~ ✓ |
 | M30 | Broadphase (uniform grid or dynamic AABB tree) — deferred until post-M32 |
 | M31 | ~~Narrowphase (AABB-AABB, Sphere-Sphere, AABB-Sphere) — bundled with M29~~ ✓ |
-| M32 | Rigidbody component; linear dynamics (integrate velocity/position) |
+| M32 | ~~Rigidbody component; linear dynamics (integrate velocity/position)~~ ✓ |
 | M33 | Collision response; impulse resolution, restitution, friction |
 | M34 | Raycasting against scene colliders |
 | M35 | OBB narrowphase + SAT |

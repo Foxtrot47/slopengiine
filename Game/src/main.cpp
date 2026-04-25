@@ -24,6 +24,7 @@
 #include "Engine/Scene/CameraComponent.h"
 #include "Engine/Scene/ArcballController.h"
 #include "Engine/Scene/FPSController.h"
+#include "Engine/Physics/RigidBodyComponent.h"
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -157,8 +158,20 @@ public:
         m_arcball.pitchDeg = -15.0f;
         m_arcball.Update(GetInput(), *m_camera);
 
+        // ---- Physics ball (M32 demo) ----
+        SE::Entity* ballEntity = m_scene.CreateEntity("PhysBall");
+        m_ballTransform  = ballEntity->AddComponent<SE::TransformComponent>();
+        m_ballRigidBody  = ballEntity->AddComponent<SE::RigidBodyComponent>();
+        ResetBall();
+
         SE_LOG_INFO("TestScene ready — Sponza (%u submeshes)", m_mesh->GetSubMeshCount());
         return true;
+    }
+
+    void ResetBall()
+    {
+        m_ballTransform->position = m_ballSpawn;
+        m_ballRigidBody->velocity = { 0.0f, 0.0f, 0.0f };
     }
 
 protected:
@@ -223,7 +236,24 @@ protected:
         ImGui::SliderFloat("Roughness Scale", &m_roughnessScale, 0.0f, 2.0f);
         ImGui::SliderFloat("Metallic",        &m_metallic,       0.0f, 1.0f);
         ImGui::Separator();
-        ImGui::Text("Physics");
+        ImGui::Text("Physics — Rigidbody (M32)");
+        ImGui::DragFloat3("Spawn pos",    &m_ballSpawn.x,      1.0f);
+        ImGui::Checkbox("Gravity",        &m_ballRigidBody->useGravity);
+        ImGui::SliderFloat("Mass",        &m_ballRigidBody->mass, 0.1f, 10.0f);
+        ImGui::Text("  pos  (%.1f, %.1f, %.1f)",
+            m_ballTransform->position.x,
+            m_ballTransform->position.y,
+            m_ballTransform->position.z);
+        ImGui::Text("  vel  (%.2f, %.2f, %.2f)",
+            m_ballRigidBody->velocity.x,
+            m_ballRigidBody->velocity.y,
+            m_ballRigidBody->velocity.z);
+        if (ImGui::Button("Reset"))  ResetBall();
+        ImGui::SameLine();
+        if (ImGui::Button("Launch up"))
+            m_ballRigidBody->AddImpulse({ 0.0f, 20.0f, 0.0f });
+        ImGui::Separator();
+        ImGui::Text("Intersection tests");
         ImGui::DragFloat3("Sphere A pos", &m_sphereA.center.x, 0.05f, -20.0f, 20.0f);
         ImGui::DragFloat ("Sphere A r",   &m_sphereA.radius,   0.05f,  0.1f,  5.0f);
         ImGui::DragFloat3("Sphere B pos", &m_sphereB.center.x, 0.05f, -20.0f, 20.0f);
@@ -437,10 +467,15 @@ private:
     int                m_numPointLights = 2;
     PointLightSettings m_pointLights[8];
 
-    // Physics demo — M29
+    // Intersection test primitives (M29)
     SE::AABB   m_sponzaAABB = SE::AABB::FromCenterExtents({ 0,4,0 }, { 14.0f, 4.0f, 5.0f });
     SE::Sphere m_sphereA    = { { -2.0f, 2.0f, 0.0f }, 1.0f };
     SE::Sphere m_sphereB    = { {  2.0f, 2.0f, 0.0f }, 1.0f };
+
+    // Rigidbody demo (M32)
+    SE::TransformComponent*  m_ballTransform = nullptr;
+    SE::RigidBodyComponent*  m_ballRigidBody = nullptr;
+    DirectX::XMFLOAT3        m_ballSpawn     = { 0.0f, 30.0f, 0.0f };
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
