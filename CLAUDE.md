@@ -149,7 +149,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M22 | ~~Entity/component system (no ECS framework; hand-rolled, simple)~~ ✓ |
 | M23 | ~~Scene graph; parent-child transforms~~ ✓ |
 | M24 | ~~Camera component; arcball + FPS controller~~ ✓ |
-| M25 | Asset manager (path-keyed cache, ref-counted handles) |
+| M25 | ~~Asset manager (path-keyed cache, ref-counted handles)~~ ✓ |
 
 ### Phase 6 — Audio
 
