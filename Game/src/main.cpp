@@ -9,6 +9,8 @@
 #include "Engine/Core/Engine.h"
 #include "Engine/Core/Logger.h"
 #include "Engine/Renderer/Mesh.h"
+#include "Engine/Renderer/VertexBuffer.h"
+#include "Engine/Renderer/IndexBuffer.h"
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/Texture2D.h"
 #include "Engine/Renderer/SamplerState.h"
@@ -28,6 +30,45 @@
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
+
+static void BuildSphereMesh(float radius, int rings, int segs,
+    std::vector<SE::MeshVertex>& verts, std::vector<uint32_t>& indices)
+{
+    const float pi = XM_PI;
+    for (int r = 0; r <= rings; ++r)
+    {
+        float phi = -pi * 0.5f + pi * r / rings;
+        for (int s = 0; s <= segs; ++s)
+        {
+            float theta = XM_2PI * s / segs;
+            float cp = cosf(phi), sp = sinf(phi);
+            float ct = cosf(theta), st = sinf(theta);
+
+            SE::MeshVertex v;
+            v.x  = cp * ct * radius;
+            v.y  = sp      * radius;
+            v.z  = cp * st * radius;
+            v.nx = cp * ct; v.ny = sp; v.nz = cp * st;
+            v.u  = (float)s / segs;
+            v.v  = (float)r / rings;
+            v.tx = -st;      v.ty = 0.0f; v.tz = ct;   // d/dtheta normalised
+            v.bx = -sp * ct; v.by = cp;   v.bz = -sp * st; // d/dphi normalised
+            verts.push_back(v);
+        }
+    }
+    for (int r = 0; r < rings; ++r)
+    {
+        for (int s = 0; s < segs; ++s)
+        {
+            uint32_t i0 = static_cast<uint32_t>(r * (segs + 1) + s);
+            uint32_t i1 = i0 + 1;
+            uint32_t i2 = i0 + static_cast<uint32_t>(segs + 1);
+            uint32_t i3 = i2 + 1;
+            indices.push_back(i0); indices.push_back(i2); indices.push_back(i1);
+            indices.push_back(i1); indices.push_back(i2); indices.push_back(i3);
+        }
+    }
+}
 
 struct TransformCB
 {
@@ -158,10 +199,27 @@ public:
         m_arcball.pitchDeg = -15.0f;
         m_arcball.Update(GetInput(), *m_camera);
 
+        // ---- Fallback textures cached for debug geometry ----
+        m_defaultWhite  = GetAssets().GetDefaultWhite();
+        m_defaultNormal = GetAssets().GetDefaultNormal();
+
+        // ---- Debug sphere mesh ----
+        {
+            std::vector<SE::MeshVertex> verts;
+            std::vector<uint32_t>       idx;
+            BuildSphereMesh(1.0f, 16, 16, verts, idx);
+            m_sphereVB.Create(device, verts.data(),
+                static_cast<uint32_t>(verts.size() * sizeof(SE::MeshVertex)),
+                sizeof(SE::MeshVertex));
+            m_sphereIB.Create(device, idx.data(),
+                static_cast<uint32_t>(idx.size()));
+        }
+
         // ---- Physics ball (M32 demo) ----
         SE::Entity* ballEntity = m_scene.CreateEntity("PhysBall");
         m_ballTransform  = ballEntity->AddComponent<SE::TransformComponent>();
         m_ballRigidBody  = ballEntity->AddComponent<SE::RigidBodyComponent>();
+        m_ballTransform->scale = m_ballRadius;
         ResetBall();
 
         SE_LOG_INFO("TestScene ready — Sponza (%u submeshes)", m_mesh->GetSubMeshCount());
@@ -237,7 +295,8 @@ protected:
         ImGui::SliderFloat("Metallic",        &m_metallic,       0.0f, 1.0f);
         ImGui::Separator();
         ImGui::Text("Physics — Rigidbody (M32)");
-        ImGui::DragFloat3("Spawn pos",    &m_ballSpawn.x,      1.0f);
+        ImGui::DragFloat3("Spawn pos",    &m_ballSpawn.x,         1.0f);
+        ImGui::SliderFloat("Radius",      &m_ballRadius,          0.1f, 10.0f);
         ImGui::Checkbox("Gravity",        &m_ballRigidBody->useGravity);
         ImGui::SliderFloat("Mass",        &m_ballRigidBody->mass, 0.1f, 10.0f);
         ImGui::Text("  pos  (%.1f, %.1f, %.1f)",
@@ -420,6 +479,32 @@ protected:
             m_subMats[i].normal->BindPS(ctx, 2);
             m_mesh->DrawSubMesh(ctx, i);
         }
+
+        // ---- Draw physics ball ----
+        {
+            const auto& p = m_ballTransform->position;
+            XMStoreFloat4x4(&cb.model,
+                XMMatrixScaling(m_ballRadius, m_ballRadius, m_ballRadius) *
+                XMMatrixTranslation(p.x, p.y, p.z));
+            m_transformCB.Update(ctx, cb);
+            m_transformCB.BindVS(ctx, 0);
+
+            MaterialParamsCB bmc;
+            bmc.albedoTint     = { 1.0f, 0.45f, 0.05f }; // orange
+            bmc.roughnessScale = 0.7f;
+            bmc.metallic       = 0.0f;
+            bmc._pad[0] = bmc._pad[1] = bmc._pad[2] = 0.0f;
+            m_materialCB.Update(ctx, bmc);
+            m_materialCB.BindPS(ctx, 3);
+
+            m_defaultWhite->BindPS(ctx, 0);
+            m_defaultWhite->BindPS(ctx, 1);
+            m_defaultNormal->BindPS(ctx, 2);
+
+            m_sphereVB.Bind(ctx);
+            m_sphereIB.Bind(ctx);
+            ctx->DrawIndexed(m_sphereIB.GetCount(), 0, 0);
+        }
     }
 
 private:
@@ -432,6 +517,10 @@ private:
     SE::ConstantBuffer<PointLightCB>     m_pointLightCB;
     SE::ConstantBuffer<MaterialParamsCB> m_materialCB;
     SE::SamplerState                     m_sampler;
+    SE::VertexBuffer                     m_sphereVB;
+    SE::IndexBuffer                      m_sphereIB;
+    SE::AssetHandle<SE::Texture2D>       m_defaultWhite;
+    SE::AssetHandle<SE::Texture2D>       m_defaultNormal;
 
     struct SubMat
     {
@@ -476,6 +565,7 @@ private:
     SE::TransformComponent*  m_ballTransform = nullptr;
     SE::RigidBodyComponent*  m_ballRigidBody = nullptr;
     DirectX::XMFLOAT3        m_ballSpawn     = { 0.0f, 30.0f, 0.0f };
+    float                    m_ballRadius    = 1.0f;
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
