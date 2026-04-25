@@ -24,6 +24,13 @@ bool Mesh::Load(ID3D11Device* device, const char* path)
         return false;
     }
 
+    // Extract directory so callers can resolve relative texture paths.
+    {
+        std::string p(path);
+        auto pos = p.find_last_of("/\\");
+        m_directory = (pos != std::string::npos) ? p.substr(0, pos + 1) : "";
+    }
+
     m_subMeshes.reserve(scene->mNumMeshes);
 
     for (uint32_t m = 0; m < scene->mNumMeshes; ++m)
@@ -75,6 +82,33 @@ bool Mesh::Load(ID3D11Device* device, const char* path)
                           static_cast<uint32_t>(indices.size())))
             return false;
 
+        // Extract material texture paths (glTF PBR slots).
+        if (mesh->mMaterialIndex < scene->mNumMaterials)
+        {
+            const aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
+            aiString s;
+
+            auto tryGet = [&](aiTextureType t) -> std::string {
+                if (mat->GetTexture(t, 0, &s) == AI_SUCCESS &&
+                    s.length > 0 && s.C_Str()[0] != '*')
+                    return s.C_Str();
+                return {};
+            };
+
+            // Base color: prefer PBR slot, fall back to legacy diffuse.
+            sm.albedoPath = tryGet(aiTextureType_BASE_COLOR);
+            if (sm.albedoPath.empty())
+                sm.albedoPath = tryGet(aiTextureType_DIFFUSE);
+
+            // Normal map.
+            sm.normalPath = tryGet(aiTextureType_NORMALS);
+
+            // Roughness: glTF metallic-roughness texture (G = roughness).
+            sm.roughnessPath = tryGet(aiTextureType_DIFFUSE_ROUGHNESS);
+            if (sm.roughnessPath.empty())
+                sm.roughnessPath = tryGet(aiTextureType_UNKNOWN);
+        }
+
         m_subMeshes.push_back(std::move(sm));
     }
 
@@ -90,6 +124,20 @@ void Mesh::Draw(ID3D11DeviceContext* ctx) const
         sm.ib.Bind(ctx);
         ctx->DrawIndexed(sm.ib.GetCount(), 0, 0);
     }
+}
+
+void Mesh::DrawSubMesh(ID3D11DeviceContext* ctx, uint32_t index) const
+{
+    const SubMesh& sm = m_subMeshes[index];
+    sm.vb.Bind(ctx);
+    sm.ib.Bind(ctx);
+    ctx->DrawIndexed(sm.ib.GetCount(), 0, 0);
+}
+
+SubMeshInfo Mesh::GetSubMeshInfo(uint32_t index) const
+{
+    const SubMesh& sm = m_subMeshes[index];
+    return { sm.albedoPath, sm.normalPath, sm.roughnessPath };
 }
 
 } // namespace SE

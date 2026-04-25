@@ -22,6 +22,10 @@ public:
     AssetHandle<Mesh>      GetMesh   (const std::string&  path);
     AssetHandle<Texture2D> GetTexture(const std::wstring& path);
 
+    // Fallback 1×1 textures for submeshes missing a particular map.
+    AssetHandle<Texture2D> GetDefaultWhite();   // flat white albedo / roughness
+    AssetHandle<Texture2D> GetDefaultNormal();  // flat tangent-space normal (128,128,255)
+
     uint32_t CachedMeshCount()    const;
     uint32_t CachedTextureCount() const;
 
@@ -29,6 +33,8 @@ private:
     ID3D11Device* m_device = nullptr;
     std::unordered_map<std::string,  std::weak_ptr<Mesh>>     m_meshes;
     std::unordered_map<std::wstring, std::weak_ptr<Texture2D>> m_textures;
+    std::weak_ptr<Texture2D> m_defaultWhite;
+    std::weak_ptr<Texture2D> m_defaultNormal;
 };
 
 } // namespace SE
