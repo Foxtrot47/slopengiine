@@ -22,6 +22,7 @@ public:
     const Clock&         GetClock()    const { return m_clock; }
     Renderer&            GetRenderer() { return m_renderer; }
     ImGuiLayer&          GetImGui()    { return m_imgui; }
+    InputManager&        GetInput()          { return m_input; }
     const InputManager&  GetInput()    const { return m_input; }
 
 protected:

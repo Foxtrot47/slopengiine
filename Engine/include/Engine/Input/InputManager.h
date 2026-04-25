@@ -29,6 +29,9 @@ public:
     const GamepadState& GetGamepad(uint32_t index = 0) const;
     void SetRumble(uint32_t index, float leftMotor, float rightMotor);
 
+    // Call before SetCursorPos so the resulting WM_MOUSEMOVE doesn't count as input delta.
+    void IgnoreMouseMoveAt(int32_t clientX, int32_t clientY);
+
     // Passed to Window::SetInputHook
     static LRESULT WndProcHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 
@@ -45,6 +48,10 @@ private:
     int32_t m_mouseAbsX   = 0;
     int32_t m_mouseAbsY   = 0;
     bool    m_mouseHasPos = false;
+
+    bool    m_ignorePending = false;
+    int32_t m_ignoreX       = 0;
+    int32_t m_ignoreY       = 0;
 
     GamepadState m_gamepads[k_MaxGamepads];
     uint16_t     m_prevButtons[k_MaxGamepads] = {};

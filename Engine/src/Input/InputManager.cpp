@@ -107,13 +107,34 @@ void InputManager::SetRumble(uint32_t index, float leftMotor, float rightMotor)
     XInputSetState(index, &vib);
 }
 
+void InputManager::IgnoreMouseMoveAt(int32_t clientX, int32_t clientY)
+{
+    m_ignoreX       = clientX;
+    m_ignoreY       = clientY;
+    m_ignorePending = true;
+}
+
 LRESULT InputManager::WndProcHandler(HWND /*hwnd*/, UINT msg, WPARAM wp, LPARAM lp)
 {
     if (!s_instance) return 0;
     InputManager& im = *s_instance;
 
+    auto setButton = [&](int vk, bool down)
+    {
+        if (down  && !im.m_keyDown[vk]) im.m_keyPressed[vk]  = true;
+        if (!down &&  im.m_keyDown[vk]) im.m_keyReleased[vk] = true;
+        im.m_keyDown[vk] = down;
+    };
+
     switch (msg)
     {
+    case WM_LBUTTONDOWN: setButton(VK_LBUTTON, true);  break;
+    case WM_LBUTTONUP:   setButton(VK_LBUTTON, false); break;
+    case WM_RBUTTONDOWN: setButton(VK_RBUTTON, true);  break;
+    case WM_RBUTTONUP:   setButton(VK_RBUTTON, false); break;
+    case WM_MBUTTONDOWN: setButton(VK_MBUTTON, true);  break;
+    case WM_MBUTTONUP:   setButton(VK_MBUTTON, false); break;
+
     case WM_INPUT:
     {
         UINT size = 0;
@@ -142,6 +163,15 @@ LRESULT InputManager::WndProcHandler(HWND /*hwnd*/, UINT msg, WPARAM wp, LPARAM 
     {
         int32_t x = static_cast<int32_t>(LOWORD(lp));
         int32_t y = static_cast<int32_t>(HIWORD(lp));
+        // Discard the synthetic WM_MOUSEMOVE produced by SetCursorPos re-centering.
+        if (im.m_ignorePending && x == im.m_ignoreX && y == im.m_ignoreY)
+        {
+            im.m_ignorePending = false;
+            im.m_mouseAbsX     = x;
+            im.m_mouseAbsY     = y;
+            im.m_mouseHasPos   = true;
+            break;
+        }
         if (im.m_mouseHasPos)
         {
             im.m_mouseDX += x - im.m_mouseAbsX;
