@@ -24,8 +24,7 @@
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/TransformComponent.h"
 #include "Engine/Scene/Camera/CameraComponent.h"
-#include "Engine/Scene/Camera/ArcballController.h"
-#include "Engine/Scene/Camera/FPSController.h"
+#include "Engine/Scene/Camera/CameraController.h"
 #include "Engine/Physics/RigidBodyComponent.h"
 #include "Engine/Physics/PhysicsWorld.h"
 
@@ -195,10 +194,10 @@ public:
         m_camera = camEntity->AddComponent<SE::CameraComponent>();
         m_camera->farZ = 5000.0f;
 
-        m_arcball.target   = { 0.0f, 4.0f, 0.0f };
-        m_arcball.distance = 22.0f;
-        m_arcball.pitchDeg = -15.0f;
-        m_arcball.Update(GetInput(), *m_camera);
+        m_camCtrl.orbit.target   = { 0.0f, 4.0f, 0.0f };
+        m_camCtrl.orbit.distance = 22.0f;
+        m_camCtrl.orbit.pitchDeg = -15.0f;
+        m_camCtrl.orbit.Update(GetInput(), *m_camera); // prime eye before first frame
 
         // ---- Fallback textures cached for debug geometry ----
         m_defaultWhite  = GetAssets().GetDefaultWhite();
@@ -244,23 +243,8 @@ protected:
         ID3D11DeviceContext* ctx = GetRenderer().GetContext();
         float dt = GetClock().GetDeltaTime();
 
-        // ---- Tab: toggle camera mode ----
-        if (GetInput().IsKeyPressed(VK_TAB))
-        {
-            m_fpsMode = !m_fpsMode;
-            if (m_fpsMode)
-            {
-                m_fps.position = m_camera->eye;
-                m_fps.yawDeg   = m_arcball.yawDeg;
-                m_fps.pitchDeg = m_arcball.pitchDeg;
-            }
-        }
-
         bool imguiMouse = ImGui::GetIO().WantCaptureMouse;
-        if (m_fpsMode)
-            m_fps.Update(dt, GetInput(), *m_camera, GetWindow().GetHandle(), imguiMouse);
-        else
-            m_arcball.Update(GetInput(), *m_camera, imguiMouse);
+        m_camCtrl.Update(dt, GetInput(), *m_camera, GetWindow().GetHandle(), imguiMouse);
 
         m_scene.Update(dt);
         m_physicsWorld.Step(dt);
@@ -277,16 +261,16 @@ protected:
                     GetClock().GetFPS(), GetClock().GetDeltaTime() * 1000.0f);
         ImGui::Separator();
         ImGui::Text("Camera  [Tab to switch]");
-        if (m_fpsMode)
+        if (m_camCtrl.GetMode() == SE::CameraController::Mode::FPS)
         {
             ImGui::Text("  FPS — WASD move, RMB look");
-            ImGui::SliderFloat("Move Speed",  &m_fps.moveSpeed,   1.0f, 40.0f);
+            ImGui::SliderFloat("Move Speed",  &m_camCtrl.fps.moveSpeed,     1.0f, 40.0f);
         }
         else
         {
-            ImGui::Text("  Arcball — LMB drag, wheel zoom");
-            ImGui::DragFloat3("Target",   &m_arcball.target.x,   0.1f);
-            ImGui::SliderFloat("Distance", &m_arcball.distance,   1.0f, 500.0f);
+            ImGui::Text("  Orbit — LMB drag, wheel zoom");
+            ImGui::DragFloat3("Target",   &m_camCtrl.orbit.target.x,        0.1f);
+            ImGui::SliderFloat("Distance", &m_camCtrl.orbit.distance,       1.0f, 500.0f);
         }
         ImGui::SliderFloat("Far Z", &m_camera->farZ, 100.0f, 20000.0f, "%.0f");
         ImGui::Text("  Eye (%.1f, %.1f, %.1f)",
@@ -550,9 +534,7 @@ private:
 
     SE::Scene            m_scene;
     SE::CameraComponent* m_camera  = nullptr;
-    SE::ArcballController m_arcball;
-    SE::FPSController     m_fps;
-    bool                  m_fpsMode = false;
+    SE::CameraController m_camCtrl;
 
     float m_lightElev    =  40.0f;
     float m_lightAzim    =  30.0f;
