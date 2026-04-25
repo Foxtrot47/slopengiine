@@ -10,6 +10,9 @@ struct RigidBodyComponent : Component
     bool  isStatic   = false;
     bool  useGravity = true;
 
+    float restitution = 0.6f; // bounciness [0=dead, 1=perfectly elastic]
+    float friction    = 0.4f; // surface friction coefficient
+
     DirectX::XMFLOAT3 velocity = { 0.0f, 0.0f, 0.0f };
     DirectX::XMFLOAT3 force    = { 0.0f, 0.0f, 0.0f }; // accumulated; cleared after each step
 

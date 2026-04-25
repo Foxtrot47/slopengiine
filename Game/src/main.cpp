@@ -27,6 +27,7 @@
 #include "Engine/Scene/ArcballController.h"
 #include "Engine/Scene/FPSController.h"
 #include "Engine/Physics/RigidBodyComponent.h"
+#include "Engine/Physics/PhysicsWorld.h"
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -215,12 +216,17 @@ public:
                 static_cast<uint32_t>(idx.size()));
         }
 
-        // ---- Physics ball (M32 demo) ----
+        // ---- Physics ball + world (M33) ----
         SE::Entity* ballEntity = m_scene.CreateEntity("PhysBall");
         m_ballTransform  = ballEntity->AddComponent<SE::TransformComponent>();
         m_ballRigidBody  = ballEntity->AddComponent<SE::RigidBodyComponent>();
         m_ballTransform->scale = m_ballRadius;
         ResetBall();
+
+        m_physicsWorld.AddSphere(m_ballTransform, m_ballRigidBody, m_ballRadius);
+        m_physicsWorld.AddStaticPlane(
+            SE::Plane::FromPointNormal({ 0.0f, m_floorY, 0.0f }, { 0.0f, 1.0f, 0.0f }),
+            0.6f, 0.4f);
 
         SE_LOG_INFO("TestScene ready — Sponza (%u submeshes)", m_mesh->GetSubMeshCount());
         return true;
@@ -257,6 +263,7 @@ protected:
             m_arcball.Update(GetInput(), *m_camera, imguiMouse);
 
         m_scene.Update(dt);
+        m_physicsWorld.Step(dt);
 
         // ---- Camera matrices ----
         XMMATRIX view  = m_camera->GetViewMatrix();
@@ -295,10 +302,21 @@ protected:
         ImGui::SliderFloat("Metallic",        &m_metallic,       0.0f, 1.0f);
         ImGui::Separator();
         ImGui::Text("Physics — Rigidbody (M32)");
-        ImGui::DragFloat3("Spawn pos",    &m_ballSpawn.x,         1.0f);
-        ImGui::SliderFloat("Radius",      &m_ballRadius,          0.1f, 10.0f);
-        ImGui::Checkbox("Gravity",        &m_ballRigidBody->useGravity);
-        ImGui::SliderFloat("Mass",        &m_ballRigidBody->mass, 0.1f, 10.0f);
+        ImGui::DragFloat3("Spawn pos",      &m_ballSpawn.x,               1.0f);
+        ImGui::SliderFloat("Radius",        &m_ballRadius,                0.1f, 10.0f);
+        ImGui::Checkbox("Gravity",          &m_ballRigidBody->useGravity);
+        ImGui::SliderFloat("Mass",          &m_ballRigidBody->mass,       0.1f, 10.0f);
+        ImGui::SliderFloat("Restitution",   &m_ballRigidBody->restitution,0.0f, 1.0f);
+        ImGui::SliderFloat("Friction",      &m_ballRigidBody->friction,   0.0f, 1.0f);
+        if (ImGui::SliderFloat("Floor Y",   &m_floorY, -50.0f, 50.0f))
+        {
+            // Rebuild the static plane when the floor moves.
+            m_physicsWorld.Clear();
+            m_physicsWorld.AddSphere(m_ballTransform, m_ballRigidBody, m_ballRadius);
+            m_physicsWorld.AddStaticPlane(
+                SE::Plane::FromPointNormal({ 0.0f, m_floorY, 0.0f }, { 0.0f, 1.0f, 0.0f }),
+                0.6f, 0.4f);
+        }
         ImGui::Text("  pos  (%.1f, %.1f, %.1f)",
             m_ballTransform->position.x,
             m_ballTransform->position.y,
@@ -561,11 +579,13 @@ private:
     SE::Sphere m_sphereA    = { { -2.0f, 2.0f, 0.0f }, 1.0f };
     SE::Sphere m_sphereB    = { {  2.0f, 2.0f, 0.0f }, 1.0f };
 
-    // Rigidbody demo (M32)
+    // Rigidbody + collision demo (M32/M33)
+    SE::PhysicsWorld         m_physicsWorld;
     SE::TransformComponent*  m_ballTransform = nullptr;
     SE::RigidBodyComponent*  m_ballRigidBody = nullptr;
     DirectX::XMFLOAT3        m_ballSpawn     = { 0.0f, 30.0f, 0.0f };
     float                    m_ballRadius    = 1.0f;
+    float                    m_floorY        = 0.0f;
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
