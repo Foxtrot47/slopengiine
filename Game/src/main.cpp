@@ -4,16 +4,21 @@
 #include <wrl/client.h>
 #include <DirectXMath.h>
 #include <imgui.h>
+#include <string>
+#include <vector>
 #include "Engine/Core/Engine.h"
 #include "Engine/Core/Logger.h"
 #include "Engine/Renderer/Mesh.h"
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/Texture2D.h"
 #include "Engine/Renderer/SamplerState.h"
-#include "Engine/Renderer/Material.h"
-#include "Engine/Input/ActionMap.h"
 #include "Engine/Input/GamepadState.h"
 #include "Engine/Assets/AssetManager.h"
+#include "Engine/Physics/AABB.h"
+#include "Engine/Physics/Sphere.h"
+#include "Engine/Physics/Ray.h"
+#include "Engine/Physics/Plane.h"
+#include "Engine/Physics/Intersect.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/TransformComponent.h"
 #include "Engine/Scene/CameraComponent.h"
@@ -51,6 +56,12 @@ struct PointLightCB
     XMFLOAT3       _pad;
 };
 
+struct MaterialParamsCB
+{
+    XMFLOAT3 albedoTint;  float roughnessScale;
+    float    metallic;    float _pad[3];
+};
+
 class TestScene : public SE::Engine
 {
 public:
@@ -75,7 +86,6 @@ public:
         SE_HR(device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_vs));
         SE_HR(device->CreatePixelShader(psBlob->GetBufferPointer(),  psBlob->GetBufferSize(), nullptr, &m_ps));
 
-        // ---- Input layout — must match MeshVertex exactly ----
         D3D11_INPUT_ELEMENT_DESC layoutDesc[] =
         {
             { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
@@ -90,67 +100,64 @@ public:
         if (!m_transformCB.Create(device))   return false;
         if (!m_lightCB.Create(device))       return false;
         if (!m_pointLightCB.Create(device))  return false;
-
-        // ---- Load FBX mesh via asset manager ----
-        m_mesh = GetAssets().GetMesh("Assets/Meshes/Mossy_Stone_Wall_ukhgdfyga_Low.fbx");
-        if (!m_mesh) return false;
-
-        // ---- Wall material ----
-        if (!m_wallMat.Create(device))  return false;
-        if (!m_wallMat.LoadAlbedo(device,
-            L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_BaseColor.jpg"))    return false;
-        if (!m_wallMat.LoadRoughness(device,
-            L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_Roughness.jpg"))   return false;
-        if (!m_wallMat.LoadNormal(device,
-            L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_Normal.jpg"))      return false;
+        if (!m_materialCB.Create(device))    return false;
 
         // ---- Anisotropic sampler ----
         if (!m_sampler.Create(device, { SE::FilterMode::Anisotropic, SE::AddressMode::Wrap }))
             return false;
 
-        // ---- Point light defaults ----
-        m_pointLights[0].position[0] =  3.0f; m_pointLights[0].position[1] = 2.0f; m_pointLights[0].position[2] = 0.0f;
-        m_pointLights[0].color[0] = 1.0f; m_pointLights[0].color[1] = 0.3f; m_pointLights[0].color[2] = 0.05f;
-        m_pointLights[0].radius = 6.0f;
+        // ---- Load Sponza ----
+        m_mesh = GetAssets().GetMesh("Assets/Sponza/Sponza.gltf");
+        if (!m_mesh) return false;
 
-        m_pointLights[1].position[0] = -2.5f; m_pointLights[1].position[1] = 3.5f; m_pointLights[1].position[2] = 2.0f;
-        m_pointLights[1].color[0] = 0.1f; m_pointLights[1].color[1] = 0.4f; m_pointLights[1].color[2] = 1.0f;
-        m_pointLights[1].radius = 5.0f;
+        // Build per-submesh material handles; fall back to default 1×1 textures.
+        const std::string& dir = m_mesh->GetDirectory();
+        auto toWide = [](const std::string& s) -> std::wstring {
+            return std::wstring(s.begin(), s.end());
+        };
 
-        // ---- Input bindings (arrow keys only — WASD reserved for FPS camera) ----
-        m_actions.Bind("RotFaster", VK_RIGHT);
-        m_actions.Bind("RotSlower", VK_LEFT);
-        m_actions.Bind("ScaleUp",   VK_UP);
-        m_actions.Bind("ScaleDown", VK_DOWN);
+        m_subMats.resize(m_mesh->GetSubMeshCount());
+        for (uint32_t i = 0; i < m_mesh->GetSubMeshCount(); ++i)
+        {
+            SE::SubMeshInfo info = m_mesh->GetSubMeshInfo(i);
+            SubMat& mat = m_subMats[i];
 
-        m_actions.BindGamepad("RotFaster", SE::GamepadButton::DpadRight);
-        m_actions.BindGamepad("RotFaster", SE::GamepadButton::RightShoulder);
-        m_actions.BindGamepad("RotSlower", SE::GamepadButton::DpadLeft);
-        m_actions.BindGamepad("RotSlower", SE::GamepadButton::LeftShoulder);
-        m_actions.BindGamepad("ScaleUp",   SE::GamepadButton::DpadUp);
-        m_actions.BindGamepad("ScaleDown", SE::GamepadButton::DpadDown);
+            if (!info.albedoPath.empty())
+                mat.albedo = GetAssets().GetTexture(toWide(dir + info.albedoPath));
+            if (!mat.albedo)
+                mat.albedo = GetAssets().GetDefaultWhite();
 
-        // ---- ECS setup ----
-        SE::Entity* wallEntity = m_scene.CreateEntity("Wall");
-        m_wallTransform = wallEntity->AddComponent<SE::TransformComponent>();
-        m_wallTransform->scale = m_scale;
+            if (!info.normalPath.empty())
+                mat.normal = GetAssets().GetTexture(toWide(dir + info.normalPath));
+            if (!mat.normal)
+                mat.normal = GetAssets().GetDefaultNormal();
 
-        SE::Entity* pivotEntity = m_scene.CreateEntity("Pivot");
-        m_pivotTransform = pivotEntity->AddComponent<SE::TransformComponent>();
-        m_pivotTransform->position = { 0.0f, 0.0f, 100.0f };
-        m_pivotTransform->scale    = m_scale * 100.0f;
-        m_pivotTransform->SetParent(m_wallTransform);
+            if (!info.roughnessPath.empty())
+                mat.roughness = GetAssets().GetTexture(toWide(dir + info.roughnessPath));
+            if (!mat.roughness)
+                mat.roughness = GetAssets().GetDefaultWhite();
+        }
 
+        // ---- Point lights — Sponza atrium ----
+        m_pointLights[0].position[0] =  0.0f; m_pointLights[0].position[1] = 5.0f; m_pointLights[0].position[2] = 0.0f;
+        m_pointLights[0].color[0] = 1.0f; m_pointLights[0].color[1] = 0.85f; m_pointLights[0].color[2] = 0.5f;
+        m_pointLights[0].radius = 18.0f;
+
+        m_pointLights[1].position[0] = 8.0f; m_pointLights[1].position[1] = 3.0f; m_pointLights[1].position[2] = 0.0f;
+        m_pointLights[1].color[0] = 0.3f; m_pointLights[1].color[1] = 0.5f; m_pointLights[1].color[2] = 1.0f;
+        m_pointLights[1].radius = 10.0f;
+
+        // ---- Camera — orbiting Sponza atrium ----
         SE::Entity* camEntity = m_scene.CreateEntity("Camera");
         m_camera = camEntity->AddComponent<SE::CameraComponent>();
+        m_camera->farZ = 5000.0f;
 
-        // Arcball starts orbiting the origin from the same angle as before
-        m_arcball.target   = { 0.0f, 0.0f, 0.0f };
-        m_arcball.distance = 10.0f;
+        m_arcball.target   = { 0.0f, 4.0f, 0.0f };
+        m_arcball.distance = 22.0f;
         m_arcball.pitchDeg = -15.0f;
-        m_arcball.Update(GetInput(), *m_camera);  // prime eye/target before first frame
+        m_arcball.Update(GetInput(), *m_camera);
 
-        SE_LOG_INFO("TestScene ready — mossy stone wall");
+        SE_LOG_INFO("TestScene ready — Sponza (%u submeshes)", m_mesh->GetSubMeshCount());
         return true;
     }
 
@@ -166,7 +173,6 @@ protected:
             m_fpsMode = !m_fpsMode;
             if (m_fpsMode)
             {
-                // Seed FPS position/orientation from current arcball eye
                 m_fps.position = m_camera->eye;
                 m_fps.yawDeg   = m_arcball.yawDeg;
                 m_fps.pitchDeg = m_arcball.pitchDeg;
@@ -179,29 +185,7 @@ protected:
         else
             m_arcball.Update(GetInput(), *m_camera, imguiMouse);
 
-        // ---- Action map update (scene controls) ----
-        m_actions.Update(GetInput());
-        m_rotAngle += dt * m_rotSpeed;
-
-        if (m_actions.IsHeld("RotFaster"))  m_rotSpeed = min(3.0f, m_rotSpeed + dt * 1.5f);
-        if (m_actions.IsHeld("RotSlower"))  m_rotSpeed = max(0.0f, m_rotSpeed - dt * 1.5f);
-        if (m_actions.IsHeld("ScaleUp"))    m_scale    = min(0.1f, m_scale    + dt * 0.01f);
-        if (m_actions.IsHeld("ScaleDown"))  m_scale    = max(0.001f, m_scale  - dt * 0.01f);
-
-        m_wallTransform->eulerDeg.y  = XMConvertToDegrees(m_rotAngle);
-        m_wallTransform->scale       = m_scale;
-        m_pivotTransform->eulerDeg.y = XMConvertToDegrees(-m_rotAngle * 2.0f);
-        m_pivotTransform->scale      = m_scale * 100.0f;
         m_scene.Update(dt);
-
-        // ---- Analog gamepad axes ----
-        const SE::GamepadState& gp = GetInput().GetGamepad(0);
-        if (gp.connected)
-        {
-            if (fabsf(gp.leftX) > 0.0f)
-                m_rotSpeed = max(0.0f, min(3.0f, m_rotSpeed + gp.leftX * dt * 3.0f));
-            m_scale = max(0.001f, min(0.1f, m_scale + (gp.rightTrigger - gp.leftTrigger) * dt * 0.05f));
-        }
 
         // ---- Camera matrices ----
         XMMATRIX view  = m_camera->GetViewMatrix();
@@ -218,38 +202,45 @@ protected:
         if (m_fpsMode)
         {
             ImGui::Text("  FPS — WASD move, RMB look");
-            ImGui::SliderFloat("Move Speed",  &m_fps.moveSpeed,   1.0f, 20.0f);
+            ImGui::SliderFloat("Move Speed",  &m_fps.moveSpeed,   1.0f, 40.0f);
         }
         else
         {
             ImGui::Text("  Arcball — LMB drag, wheel zoom");
             ImGui::DragFloat3("Target",   &m_arcball.target.x,   0.1f);
-            ImGui::SliderFloat("Distance", &m_arcball.distance,   0.5f, 100.0f);
+            ImGui::SliderFloat("Distance", &m_arcball.distance,   1.0f, 500.0f);
         }
+        ImGui::SliderFloat("Far Z", &m_camera->farZ, 100.0f, 20000.0f, "%.0f");
         ImGui::Text("  Eye (%.1f, %.1f, %.1f)",
             m_camera->eye.x, m_camera->eye.y, m_camera->eye.z);
         ImGui::Separator();
-        ImGui::SliderFloat("Scale",     &m_scale,    0.001f, 0.1f, "%.4f");
-        ImGui::SliderFloat("Rot Speed", &m_rotSpeed, 0.0f,   3.0f);
-        ImGui::Separator();
         ImGui::Text("Assets  meshes:%u  textures:%u",
             GetAssets().CachedMeshCount(), GetAssets().CachedTextureCount());
+        ImGui::Text("Submeshes: %u", m_mesh ? m_mesh->GetSubMeshCount() : 0);
         ImGui::Separator();
-        ImGui::Text("Entities (%zu)", m_scene.GetEntities().size());
-        for (const auto& e : m_scene.GetEntities())
+        ImGui::Text("Material (global)");
+        ImGui::ColorEdit3("Albedo Tint",      m_matTint);
+        ImGui::SliderFloat("Roughness Scale", &m_roughnessScale, 0.0f, 2.0f);
+        ImGui::SliderFloat("Metallic",        &m_metallic,       0.0f, 1.0f);
+        ImGui::Separator();
+        ImGui::Text("Physics");
+        ImGui::DragFloat3("Sphere A pos", &m_sphereA.center.x, 0.05f, -20.0f, 20.0f);
+        ImGui::DragFloat ("Sphere A r",   &m_sphereA.radius,   0.05f,  0.1f,  5.0f);
+        ImGui::DragFloat3("Sphere B pos", &m_sphereB.center.x, 0.05f, -20.0f, 20.0f);
+        ImGui::DragFloat ("Sphere B r",   &m_sphereB.radius,   0.05f,  0.1f,  5.0f);
+        ImGui::Text("  A ∩ B: %s", SE::Intersects(m_sphereA, m_sphereB) ? "OVERLAP" : "clear");
         {
-            auto* t = e->GetComponent<SE::TransformComponent>();
-            if (t && t->parent) continue;
-            ImGui::Text("  [%u] %s", e->GetID(), e->GetName().c_str());
-            if (t)
-                for (auto* child : t->children)
-                    ImGui::Text("    . [%u] %s", child->GetOwner()->GetID(), child->GetOwner()->GetName().c_str());
+            float    physAspect = static_cast<float>(GetWindow().GetWidth()) /
+                                   static_cast<float>(GetWindow().GetHeight());
+            XMMATRIX vp    = XMMatrixMultiply(m_camera->GetViewMatrix(),
+                                              m_camera->GetProjectionMatrix(physAspect));
+            XMMATRIX invVP = XMMatrixInverse(nullptr, vp);
+            SE::Ray   ray  = SE::Ray::FromNDC(0.0f, 0.0f, invVP);
+            float     t    = 0.0f;
+            bool      hit  = SE::Intersects(ray, m_sponzaAABB, t);
+            ImGui::Text("  Crosshair->scene AABB: %s%s", hit ? "HIT  t=" : "miss",
+                        hit ? std::to_string(t).c_str() : "");
         }
-        ImGui::Separator();
-        ImGui::Text("Wall Material");
-        ImGui::ColorEdit3("Albedo Tint",      m_wallMat.albedoTint);
-        ImGui::SliderFloat("Roughness Scale", &m_wallMat.roughnessScale, 0.0f, 2.0f);
-        ImGui::SliderFloat("Metallic",        &m_wallMat.metallic,       0.0f, 1.0f);
         ImGui::Separator();
         ImGui::Text("Lighting");
         ImGui::SliderFloat("Elevation", &m_lightElev,  -90.0f, 90.0f,  "%.1f deg");
@@ -266,12 +257,13 @@ protected:
             sprintf_s(label, "Point Light %d", i + 1);
             if (ImGui::CollapsingHeader(label))
             {
-                ImGui::DragFloat3("Position", m_pointLights[i].position, 0.1f, -20.0f, 20.0f);
+                ImGui::DragFloat3("Position", m_pointLights[i].position, 0.1f, -30.0f, 30.0f);
                 ImGui::ColorEdit3("Color",    m_pointLights[i].color);
-                ImGui::SliderFloat("Radius",  &m_pointLights[i].radius, 0.5f, 30.0f);
+                ImGui::SliderFloat("Radius",  &m_pointLights[i].radius, 0.5f, 50.0f);
             }
             ImGui::PopID();
         }
+        const SE::GamepadState& gp = GetInput().GetGamepad(0);
         if (gp.connected)
             ImGui::Text("Pad0  L(%.2f,%.2f) R(%.2f,%.2f) LT:%.2f RT:%.2f",
                 gp.leftX, gp.leftY, gp.rightX, gp.rightY,
@@ -297,7 +289,6 @@ protected:
                 return true;
             };
 
-            // Sun indicator — offset from camera eye in light direction
             {
                 float er = XMConvertToRadians(m_lightElev);
                 float ar = XMConvertToRadians(m_lightAzim);
@@ -306,7 +297,7 @@ protected:
                 XMVECTOR eyeV = XMVectorSet(
                     m_camera->eye.x, m_camera->eye.y, m_camera->eye.z, 1.0f);
                 XMVECTOR sunPos = XMVectorSetW(
-                    XMVectorAdd(eyeV, XMVectorScale(dir, 60.0f)), 1.0f);
+                    XMVectorAdd(eyeV, XMVectorScale(dir, 80.0f)), 1.0f);
 
                 float sx, sy;
                 if (project(sunPos, sx, sy))
@@ -329,19 +320,17 @@ protected:
                 float sx, sy;
                 if (!project(XMVectorSet(s.position[0], s.position[1], s.position[2], 1.0f), sx, sy))
                     continue;
-
                 ImU32 fill = ImGui::ColorConvertFloat4ToU32(
                     { s.color[0], s.color[1], s.color[2], 1.0f });
                 dl->AddCircleFilled({ sx, sy }, 7.0f, fill);
                 dl->AddCircle({ sx, sy }, 8.0f, IM_COL32(255, 255, 255, 200), 0, 1.5f);
-
                 char tag[8];
                 sprintf_s(tag, "PL%d", i + 1);
                 dl->AddText({ sx + 11.0f, sy - 7.0f }, IM_COL32_WHITE, tag);
             }
         }
 
-        // ---- Bind shared render state ----
+        // ---- Bind shared constant buffers + pipeline state ----
         {
             float elevRad = XMConvertToRadians(m_lightElev);
             float azimRad = XMConvertToRadians(m_lightAzim);
@@ -352,7 +341,7 @@ protected:
             lc._pad0        = 0.0f;
             lc.ambientColor = { m_ambientColor[0], m_ambientColor[1], m_ambientColor[2] };
             lc._pad1        = 0.0f;
-            lc.cameraPos    = m_camera->eye;   // live camera position
+            lc.cameraPos    = m_camera->eye;
             lc._pad2        = 0.0f;
             m_lightCB.Update(ctx, lc);
             m_lightCB.BindPS(ctx, 1);
@@ -370,27 +359,37 @@ protected:
             m_pointLightCB.Update(ctx, pl);
             m_pointLightCB.BindPS(ctx, 2);
         }
-        m_wallMat.Bind(ctx);
+        {
+            MaterialParamsCB mc;
+            mc.albedoTint     = { m_matTint[0], m_matTint[1], m_matTint[2] };
+            mc.roughnessScale = m_roughnessScale;
+            mc.metallic       = m_metallic;
+            mc._pad[0] = mc._pad[1] = mc._pad[2] = 0.0f;
+            m_materialCB.Update(ctx, mc);
+            m_materialCB.BindPS(ctx, 3);
+        }
+
         m_sampler.BindPS(ctx, 0);
         ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         ctx->IASetInputLayout(m_layout.Get());
         ctx->VSSetShader(m_vs.Get(), nullptr, 0);
         ctx->PSSetShader(m_ps.Get(), nullptr, 0);
 
-        // ---- Draw each entity using its world matrix ----
+        // ---- Draw Sponza: identity world transform, per-submesh textures ----
         TransformCB cb;
+        XMStoreFloat4x4(&cb.model,      XMMatrixIdentity());
         XMStoreFloat4x4(&cb.view,       view);
         XMStoreFloat4x4(&cb.projection, proj);
-
-        XMStoreFloat4x4(&cb.model, m_wallTransform->GetWorldMatrix());
         m_transformCB.Update(ctx, cb);
         m_transformCB.BindVS(ctx, 0);
-        m_mesh->Draw(ctx);
 
-        XMStoreFloat4x4(&cb.model, m_pivotTransform->GetWorldMatrix());
-        m_transformCB.Update(ctx, cb);
-        m_transformCB.BindVS(ctx, 0);
-        m_mesh->Draw(ctx);
+        for (uint32_t i = 0; i < m_mesh->GetSubMeshCount(); ++i)
+        {
+            m_subMats[i].albedo->BindPS(ctx, 0);
+            m_subMats[i].roughness->BindPS(ctx, 1);
+            m_subMats[i].normal->BindPS(ctx, 2);
+            m_mesh->DrawSubMesh(ctx, i);
+        }
     }
 
 private:
@@ -398,47 +397,56 @@ private:
     ComPtr<ID3D11PixelShader>       m_ps;
     ComPtr<ID3D11InputLayout>       m_layout;
     SE::AssetHandle<SE::Mesh>       m_mesh;
-    SE::ConstantBuffer<TransformCB>   m_transformCB;
-    SE::ConstantBuffer<LightCB>       m_lightCB;
-    SE::ConstantBuffer<PointLightCB>  m_pointLightCB;
-    SE::Material                      m_wallMat;
-    SE::SamplerState                  m_sampler;
+    SE::ConstantBuffer<TransformCB>      m_transformCB;
+    SE::ConstantBuffer<LightCB>          m_lightCB;
+    SE::ConstantBuffer<PointLightCB>     m_pointLightCB;
+    SE::ConstantBuffer<MaterialParamsCB> m_materialCB;
+    SE::SamplerState                     m_sampler;
 
-    float          m_scale     = 0.02f;
-    float          m_rotSpeed  = 0.4f;
-    float          m_rotAngle  = 0.0f;
-    SE::ActionMap  m_actions;
+    struct SubMat
+    {
+        SE::AssetHandle<SE::Texture2D> albedo;
+        SE::AssetHandle<SE::Texture2D> normal;
+        SE::AssetHandle<SE::Texture2D> roughness;
+    };
+    std::vector<SubMat> m_subMats;
 
-    SE::Scene               m_scene;
-    SE::TransformComponent* m_wallTransform  = nullptr;
-    SE::TransformComponent* m_pivotTransform = nullptr;
-    SE::CameraComponent*    m_camera         = nullptr;
+    SE::Scene            m_scene;
+    SE::CameraComponent* m_camera  = nullptr;
+    SE::ArcballController m_arcball;
+    SE::FPSController     m_fps;
+    bool                  m_fpsMode = false;
 
-    SE::ArcballController   m_arcball;
-    SE::FPSController       m_fps;
-    bool                    m_fpsMode = false;
-
-    float m_lightElev    =  35.0f;
-    float m_lightAzim    =  45.0f;
+    float m_lightElev    =  40.0f;
+    float m_lightAzim    =  30.0f;
     float m_shininess    =  64.0f;
     float m_lightColor[3]   = { 1.0f, 0.95f, 0.85f };
-    float m_ambientColor[3] = { 0.08f, 0.08f, 0.12f };
+    float m_ambientColor[3] = { 0.06f, 0.06f, 0.08f };
+
+    float m_matTint[3]      = { 1.0f, 1.0f, 1.0f };
+    float m_roughnessScale  = 1.0f;
+    float m_metallic        = 0.0f;
 
     struct PointLightSettings
     {
         float position[3]   = { 0.0f, 2.0f, 0.0f };
         float color[3]      = { 1.0f, 1.0f, 1.0f };
-        float radius        = 6.0f;
+        float radius        = 10.0f;
     };
 
     int                m_numPointLights = 2;
     PointLightSettings m_pointLights[8];
+
+    // Physics demo — M29
+    SE::AABB   m_sponzaAABB = SE::AABB::FromCenterExtents({ 0,4,0 }, { 14.0f, 4.0f, 5.0f });
+    SE::Sphere m_sphereA    = { { -2.0f, 2.0f, 0.0f }, 1.0f };
+    SE::Sphere m_sphereB    = { {  2.0f, 2.0f, 0.0f }, 1.0f };
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
     SE::WindowDesc desc;
-    desc.title  = L"FoxEngine";
+    desc.title  = L"FoxEngine — Sponza";
     desc.width  = 1280;
     desc.height = 720;
 

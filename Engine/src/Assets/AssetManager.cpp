@@ -43,6 +43,26 @@ AssetHandle<Texture2D> AssetManager::GetTexture(const std::wstring& path)
     return tex;
 }
 
+AssetHandle<Texture2D> AssetManager::GetDefaultWhite()
+{
+    if (auto h = m_defaultWhite.lock()) return h;
+    auto tex = std::make_shared<Texture2D>();
+    uint8_t px[4] = { 255, 255, 255, 255 };
+    tex->CreateFromMemory(m_device, px, 1, 1);
+    m_defaultWhite = tex;
+    return tex;
+}
+
+AssetHandle<Texture2D> AssetManager::GetDefaultNormal()
+{
+    if (auto h = m_defaultNormal.lock()) return h;
+    auto tex = std::make_shared<Texture2D>();
+    uint8_t px[4] = { 128, 128, 255, 255 };
+    tex->CreateFromMemory(m_device, px, 1, 1);
+    m_defaultNormal = tex;
+    return tex;
+}
+
 uint32_t AssetManager::CachedMeshCount() const
 {
     uint32_t n = 0;

@@ -87,7 +87,7 @@ float4 PS_Main(PSIn input) : SV_TARGET
     float3 V         = normalize(CameraPos - input.WorldPos);
     float4 albedo    = g_albedo.Sample(g_sampler, input.TexCoord);
     albedo.rgb      *= AlbedoTint;
-    float  roughness = g_roughness.Sample(g_sampler, input.TexCoord).r * RoughnessScale;
+    float  roughness = g_roughness.Sample(g_sampler, input.TexCoord).g * RoughnessScale;
     float  specMask  = 1.0f - saturate(roughness);
     float  pixShine  = max(1.0f, Shininess * specMask);
 
