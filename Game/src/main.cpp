@@ -23,9 +23,9 @@
 #include "Engine/Physics/Intersect.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/TransformComponent.h"
-#include "Engine/Scene/CameraComponent.h"
-#include "Engine/Scene/ArcballController.h"
-#include "Engine/Scene/FPSController.h"
+#include "Engine/Scene/Camera/CameraComponent.h"
+#include "Engine/Scene/Camera/ArcballController.h"
+#include "Engine/Scene/Camera/FPSController.h"
 #include "Engine/Physics/RigidBodyComponent.h"
 #include "Engine/Physics/PhysicsWorld.h"
 
