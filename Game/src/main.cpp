@@ -15,6 +15,9 @@
 #include "Engine/Input/GamepadState.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/TransformComponent.h"
+#include "Engine/Scene/CameraComponent.h"
+#include "Engine/Scene/ArcballController.h"
+#include "Engine/Scene/FPSController.h"
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -100,7 +103,7 @@ public:
         if (!m_wallMat.LoadNormal(device,
             L"Assets/Textures/Mossy_Stone_Wall_ukhgdfyga_Low_1K_Normal.jpg"))      return false;
 
-        // ---- Anisotropic sampler — this is the game-quality default ----
+        // ---- Anisotropic sampler ----
         if (!m_sampler.Create(device, { SE::FilterMode::Anisotropic, SE::AddressMode::Wrap }))
             return false;
 
@@ -113,11 +116,9 @@ public:
         m_pointLights[1].color[0] = 0.1f; m_pointLights[1].color[1] = 0.4f; m_pointLights[1].color[2] = 1.0f;
         m_pointLights[1].radius = 5.0f;
 
-        // ---- Input bindings ----
+        // ---- Input bindings (arrow keys only — WASD reserved for FPS camera) ----
         m_actions.Bind("RotFaster", VK_RIGHT);
-        m_actions.Bind("RotFaster", 'D');
         m_actions.Bind("RotSlower", VK_LEFT);
-        m_actions.Bind("RotSlower", 'A');
         m_actions.Bind("ScaleUp",   VK_UP);
         m_actions.Bind("ScaleDown", VK_DOWN);
 
@@ -135,9 +136,18 @@ public:
 
         SE::Entity* pivotEntity = m_scene.CreateEntity("Pivot");
         m_pivotTransform = pivotEntity->AddComponent<SE::TransformComponent>();
-        m_pivotTransform->position = { 0.0f, 0.0f, 100.0f }; // 100 units right in parent local space
+        m_pivotTransform->position = { 0.0f, 0.0f, 100.0f };
         m_pivotTransform->scale    = m_scale * 100.0f;
-        m_pivotTransform->SetParent(m_wallTransform);       // pivot orbits wall
+        m_pivotTransform->SetParent(m_wallTransform);
+
+        SE::Entity* camEntity = m_scene.CreateEntity("Camera");
+        m_camera = camEntity->AddComponent<SE::CameraComponent>();
+
+        // Arcball starts orbiting the origin from the same angle as before
+        m_arcball.target   = { 0.0f, 0.0f, 0.0f };
+        m_arcball.distance = 10.0f;
+        m_arcball.pitchDeg = -15.0f;
+        m_arcball.Update(GetInput(), *m_camera);  // prime eye/target before first frame
 
         SE_LOG_INFO("TestScene ready — mossy stone wall");
         return true;
@@ -149,7 +159,26 @@ protected:
         ID3D11DeviceContext* ctx = GetRenderer().GetContext();
         float dt = GetClock().GetDeltaTime();
 
-        // ---- Action map update ----
+        // ---- Tab: toggle camera mode ----
+        if (GetInput().IsKeyPressed(VK_TAB))
+        {
+            m_fpsMode = !m_fpsMode;
+            if (m_fpsMode)
+            {
+                // Seed FPS position/orientation from current arcball eye
+                m_fps.position = m_camera->eye;
+                m_fps.yawDeg   = m_arcball.yawDeg;
+                m_fps.pitchDeg = m_arcball.pitchDeg;
+            }
+        }
+
+        bool imguiMouse = ImGui::GetIO().WantCaptureMouse;
+        if (m_fpsMode)
+            m_fps.Update(dt, GetInput(), *m_camera, GetWindow().GetHandle(), imguiMouse);
+        else
+            m_arcball.Update(GetInput(), *m_camera, imguiMouse);
+
+        // ---- Action map update (scene controls) ----
         m_actions.Update(GetInput());
         m_rotAngle += dt * m_rotSpeed;
 
@@ -160,25 +189,44 @@ protected:
 
         m_wallTransform->eulerDeg.y  = XMConvertToDegrees(m_rotAngle);
         m_wallTransform->scale       = m_scale;
-        m_pivotTransform->eulerDeg.y = XMConvertToDegrees(-m_rotAngle * 2.0f); // counter-spin
-        m_pivotTransform->scale      = m_scale * 0.35f;
+        m_pivotTransform->eulerDeg.y = XMConvertToDegrees(-m_rotAngle * 2.0f);
+        m_pivotTransform->scale      = m_scale * 100.0f;
         m_scene.Update(dt);
 
         // ---- Analog gamepad axes ----
         const SE::GamepadState& gp = GetInput().GetGamepad(0);
         if (gp.connected)
         {
-            // Left stick X: direct rotation speed control
             if (fabsf(gp.leftX) > 0.0f)
                 m_rotSpeed = max(0.0f, min(3.0f, m_rotSpeed + gp.leftX * dt * 3.0f));
-            // Triggers: scale up/down
             m_scale = max(0.001f, min(0.1f, m_scale + (gp.rightTrigger - gp.leftTrigger) * dt * 0.05f));
         }
+
+        // ---- Camera matrices ----
+        XMMATRIX view  = m_camera->GetViewMatrix();
+        float    aspect = static_cast<float>(GetWindow().GetWidth()) /
+                          static_cast<float>(GetWindow().GetHeight());
+        XMMATRIX proj  = m_camera->GetProjectionMatrix(aspect);
 
         // ---- Debug panel ----
         ImGui::Begin("Scene");
         ImGui::Text("%.1f fps  |  %.2f ms",
                     GetClock().GetFPS(), GetClock().GetDeltaTime() * 1000.0f);
+        ImGui::Separator();
+        ImGui::Text("Camera  [Tab to switch]");
+        if (m_fpsMode)
+        {
+            ImGui::Text("  FPS — WASD move, RMB look");
+            ImGui::SliderFloat("Move Speed",  &m_fps.moveSpeed,   1.0f, 20.0f);
+        }
+        else
+        {
+            ImGui::Text("  Arcball — LMB drag, wheel zoom");
+            ImGui::DragFloat3("Target",   &m_arcball.target.x,   0.1f);
+            ImGui::SliderFloat("Distance", &m_arcball.distance,   0.5f, 100.0f);
+        }
+        ImGui::Text("  Eye (%.1f, %.1f, %.1f)",
+            m_camera->eye.x, m_camera->eye.y, m_camera->eye.z);
         ImGui::Separator();
         ImGui::SliderFloat("Scale",     &m_scale,    0.001f, 0.1f, "%.4f");
         ImGui::SliderFloat("Rot Speed", &m_rotSpeed, 0.0f,   3.0f);
@@ -187,11 +235,11 @@ protected:
         for (const auto& e : m_scene.GetEntities())
         {
             auto* t = e->GetComponent<SE::TransformComponent>();
-            if (t && t->parent) continue; // printed as child below its parent
+            if (t && t->parent) continue;
             ImGui::Text("  [%u] %s", e->GetID(), e->GetName().c_str());
             if (t)
                 for (auto* child : t->children)
-                    ImGui::Text("    \xc2\xb7 [%u] %s", child->GetOwner()->GetID(), child->GetOwner()->GetName().c_str());
+                    ImGui::Text("    . [%u] %s", child->GetOwner()->GetID(), child->GetOwner()->GetName().c_str());
         }
         ImGui::Separator();
         ImGui::Text("Wall Material");
@@ -228,15 +276,6 @@ protected:
             ImGui::TextDisabled("Pad0  not connected");
         ImGui::End();
 
-        XMMATRIX view  = XMMatrixLookAtLH(
-            XMVectorSet(0.0f, 2.0f, -10.0f, 1.0f),
-            XMVectorSet(0.0f, 2.0f,   0.0f, 1.0f),
-            XMVectorSet(0.0f, 1.0f,   0.0f, 0.0f));
-        float aspect   = static_cast<float>(GetWindow().GetWidth()) /
-                         static_cast<float>(GetWindow().GetHeight());
-        XMMATRIX proj  = XMMatrixPerspectiveFovLH(
-            XMConvertToRadians(60.0f), aspect, 0.1f, 100.0f);
-
         // ---- Light viewport indicators ----
         {
             XMMATRIX viewProj = XMMatrixMultiply(view, proj);
@@ -254,22 +293,21 @@ protected:
                 return true;
             };
 
-            // Sun — project a point far in the light direction from the camera
+            // Sun indicator — offset from camera eye in light direction
             {
                 float er = XMConvertToRadians(m_lightElev);
                 float ar = XMConvertToRadians(m_lightAzim);
                 XMVECTOR dir = XMVectorSet(
                     cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar), 0.0f);
-                XMVECTOR sunPos = XMVectorAdd(
-                    XMVectorSet(0.0f, 2.0f, -10.0f, 1.0f),
-                    XMVectorScale(dir, 60.0f));
-                sunPos = XMVectorSetW(sunPos, 1.0f);
+                XMVECTOR eyeV = XMVectorSet(
+                    m_camera->eye.x, m_camera->eye.y, m_camera->eye.z, 1.0f);
+                XMVECTOR sunPos = XMVectorSetW(
+                    XMVectorAdd(eyeV, XMVectorScale(dir, 60.0f)), 1.0f);
 
                 float sx, sy;
                 if (project(sunPos, sx, sy))
                 {
                     dl->AddCircleFilled({ sx, sy }, 10.0f, IM_COL32(255, 220, 50, 255));
-                    // Rays
                     for (int r = 0; r < 8; ++r)
                     {
                         float a = r * 3.14159f / 4.0f;
@@ -281,7 +319,6 @@ protected:
                 }
             }
 
-            // Point lights — 1-indexed to match the panel
             for (int i = 0; i < m_numPointLights; ++i)
             {
                 const auto& s = m_pointLights[i];
@@ -300,7 +337,7 @@ protected:
             }
         }
 
-        // ---- Bind shared render state once ----
+        // ---- Bind shared render state ----
         {
             float elevRad = XMConvertToRadians(m_lightElev);
             float azimRad = XMConvertToRadians(m_lightAzim);
@@ -311,7 +348,7 @@ protected:
             lc._pad0        = 0.0f;
             lc.ambientColor = { m_ambientColor[0], m_ambientColor[1], m_ambientColor[2] };
             lc._pad1        = 0.0f;
-            lc.cameraPos    = { 0.0f, 2.0f, -10.0f };
+            lc.cameraPos    = m_camera->eye;   // live camera position
             lc._pad2        = 0.0f;
             m_lightCB.Update(ctx, lc);
             m_lightCB.BindPS(ctx, 1);
@@ -367,9 +404,15 @@ private:
     float          m_rotSpeed  = 0.4f;
     float          m_rotAngle  = 0.0f;
     SE::ActionMap  m_actions;
-    SE::Scene      m_scene;
+
+    SE::Scene               m_scene;
     SE::TransformComponent* m_wallTransform  = nullptr;
     SE::TransformComponent* m_pivotTransform = nullptr;
+    SE::CameraComponent*    m_camera         = nullptr;
+
+    SE::ArcballController   m_arcball;
+    SE::FPSController       m_fps;
+    bool                    m_fpsMode = false;
 
     float m_lightElev    =  35.0f;
     float m_lightAzim    =  45.0f;
