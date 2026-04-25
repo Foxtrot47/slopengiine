@@ -1,4 +1,4 @@
-#include "Engine/Scene/FPSController.h"
+#include "Engine/Scene/Camera/FPSController.h"
 #include "Engine/Input/InputManager.h"
 #include <cmath>
 

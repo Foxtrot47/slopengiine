@@ -1,7 +1,7 @@
 #pragma once
 #include <windows.h>
 #include <DirectXMath.h>
-#include "Engine/Scene/CameraComponent.h"
+#include "Engine/Scene/Camera/CameraComponent.h"
 
 namespace SE {
 class InputManager;
