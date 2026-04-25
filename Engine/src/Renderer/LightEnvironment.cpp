@@ -1,0 +1,45 @@
+#include "Engine/Renderer/LightEnvironment.h"
+#include <cmath>
+
+namespace SE {
+
+bool LightEnvironment::Init(ID3D11Device* device)
+{
+    if (!m_lightCB.Create(device))      return false;
+    if (!m_pointLightCB.Create(device)) return false;
+    return true;
+}
+
+void LightEnvironment::BindPS(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 cameraPos)
+{
+    using namespace DirectX;
+
+    float er = XMConvertToRadians(elevDeg);
+    float ar = XMConvertToRadians(azimDeg);
+
+    LightCBData lc;
+    lc.lightDir     = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
+    lc.shininess    = shininess;
+    lc.lightColor   = { lightColor[0],   lightColor[1],   lightColor[2] };
+    lc._pad0        = 0.0f;
+    lc.ambientColor = { ambientColor[0], ambientColor[1], ambientColor[2] };
+    lc._pad1        = 0.0f;
+    lc.cameraPos    = cameraPos;
+    lc._pad2        = 0.0f;
+    m_lightCB.Update(ctx, lc);
+    m_lightCB.BindPS(ctx, 1);
+
+    PointLightCBData pl = {};
+    pl.num = numLights;
+    for (int i = 0; i < numLights; ++i)
+    {
+        pl.lights[i].pos    = lights[i].position;
+        pl.lights[i].radius = lights[i].radius;
+        pl.lights[i].color  = lights[i].color;
+        pl.lights[i]._pad   = 0.0f;
+    }
+    m_pointLightCB.Update(ctx, pl);
+    m_pointLightCB.BindPS(ctx, 2);
+}
+
+} // namespace SE
