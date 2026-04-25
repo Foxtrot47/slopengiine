@@ -133,6 +133,12 @@ public:
         m_wallTransform = wallEntity->AddComponent<SE::TransformComponent>();
         m_wallTransform->scale = m_scale;
 
+        SE::Entity* pivotEntity = m_scene.CreateEntity("Pivot");
+        m_pivotTransform = pivotEntity->AddComponent<SE::TransformComponent>();
+        m_pivotTransform->position = { 0.0f, 0.0f, 100.0f }; // 100 units right in parent local space
+        m_pivotTransform->scale    = m_scale * 100.0f;
+        m_pivotTransform->SetParent(m_wallTransform);       // pivot orbits wall
+
         SE_LOG_INFO("TestScene ready — mossy stone wall");
         return true;
     }
@@ -152,8 +158,10 @@ protected:
         if (m_actions.IsHeld("ScaleUp"))    m_scale    = min(0.1f, m_scale    + dt * 0.01f);
         if (m_actions.IsHeld("ScaleDown"))  m_scale    = max(0.001f, m_scale  - dt * 0.01f);
 
-        m_wallTransform->eulerDeg.y = XMConvertToDegrees(m_rotAngle);
-        m_wallTransform->scale      = m_scale;
+        m_wallTransform->eulerDeg.y  = XMConvertToDegrees(m_rotAngle);
+        m_wallTransform->scale       = m_scale;
+        m_pivotTransform->eulerDeg.y = XMConvertToDegrees(-m_rotAngle * 2.0f); // counter-spin
+        m_pivotTransform->scale      = m_scale * 0.35f;
         m_scene.Update(dt);
 
         // ---- Analog gamepad axes ----
@@ -177,7 +185,14 @@ protected:
         ImGui::Separator();
         ImGui::Text("Entities (%zu)", m_scene.GetEntities().size());
         for (const auto& e : m_scene.GetEntities())
-            ImGui::Text("  [%u] %s%s", e->GetID(), e->GetName().c_str(), e->active ? "" : " (inactive)");
+        {
+            auto* t = e->GetComponent<SE::TransformComponent>();
+            if (t && t->parent) continue; // printed as child below its parent
+            ImGui::Text("  [%u] %s", e->GetID(), e->GetName().c_str());
+            if (t)
+                for (auto* child : t->children)
+                    ImGui::Text("    \xc2\xb7 [%u] %s", child->GetOwner()->GetID(), child->GetOwner()->GetName().c_str());
+        }
         ImGui::Separator();
         ImGui::Text("Wall Material");
         ImGui::ColorEdit3("Albedo Tint",      m_wallMat.albedoTint);
@@ -213,7 +228,6 @@ protected:
             ImGui::TextDisabled("Pad0  not connected");
         ImGui::End();
 
-        XMMATRIX model = m_wallTransform->GetMatrix();
         XMMATRIX view  = XMMatrixLookAtLH(
             XMVectorSet(0.0f, 2.0f, -10.0f, 1.0f),
             XMVectorSet(0.0f, 2.0f,   0.0f, 1.0f),
@@ -286,14 +300,7 @@ protected:
             }
         }
 
-        TransformCB cb;
-        XMStoreFloat4x4(&cb.model,      model);
-        XMStoreFloat4x4(&cb.view,       view);
-        XMStoreFloat4x4(&cb.projection, proj);
-        m_transformCB.Update(ctx, cb);
-        m_transformCB.BindVS(ctx, 0);
-
-        // ---- Light constant buffer ----
+        // ---- Bind shared render state once ----
         {
             float elevRad = XMConvertToRadians(m_lightElev);
             float azimRad = XMConvertToRadians(m_lightAzim);
@@ -309,8 +316,6 @@ protected:
             m_lightCB.Update(ctx, lc);
             m_lightCB.BindPS(ctx, 1);
         }
-
-        // ---- Point lights ----
         {
             PointLightCB pl = {};
             pl.numLights = m_numPointLights;
@@ -324,15 +329,26 @@ protected:
             m_pointLightCB.Update(ctx, pl);
             m_pointLightCB.BindPS(ctx, 2);
         }
-        
         m_wallMat.Bind(ctx);
         m_sampler.BindPS(ctx, 0);
-
         ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         ctx->IASetInputLayout(m_layout.Get());
         ctx->VSSetShader(m_vs.Get(), nullptr, 0);
         ctx->PSSetShader(m_ps.Get(), nullptr, 0);
 
+        // ---- Draw each entity using its world matrix ----
+        TransformCB cb;
+        XMStoreFloat4x4(&cb.view,       view);
+        XMStoreFloat4x4(&cb.projection, proj);
+
+        XMStoreFloat4x4(&cb.model, m_wallTransform->GetWorldMatrix());
+        m_transformCB.Update(ctx, cb);
+        m_transformCB.BindVS(ctx, 0);
+        m_mesh.Draw(ctx);
+
+        XMStoreFloat4x4(&cb.model, m_pivotTransform->GetWorldMatrix());
+        m_transformCB.Update(ctx, cb);
+        m_transformCB.BindVS(ctx, 0);
         m_mesh.Draw(ctx);
     }
 
@@ -352,7 +368,8 @@ private:
     float          m_rotAngle  = 0.0f;
     SE::ActionMap  m_actions;
     SE::Scene      m_scene;
-    SE::TransformComponent* m_wallTransform = nullptr;
+    SE::TransformComponent* m_wallTransform  = nullptr;
+    SE::TransformComponent* m_pivotTransform = nullptr;
 
     float m_lightElev    =  35.0f;
     float m_lightAzim    =  45.0f;
