@@ -7,6 +7,7 @@
 #include "Engine/Physics/Plane.h"
 #include "Engine/Physics/Ray.h"
 #include "Engine/Physics/OBB.h"
+#include "Engine/Physics/CharacterController.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/TransformComponent.h"
 #include "Engine/Scene/Camera/CameraComponent.h"
@@ -55,11 +56,16 @@ public:
             SE::Plane::FromPointNormal({ 0.0f, m_floorY, 0.0f }, { 0.0f, 1.0f, 0.0f }),
             0.6f, 0.4f);
 
-        // Test OBBs for M35.
+        // Test OBBs for M35/M36.
         m_obbA = SE::OBB::FromAABB({ 2.0f, 0.0f, -2.0f }, { 6.0f, 4.0f, 2.0f });
         m_obbB = SE::OBB::MakeRotatedY({ -5.0f, 2.0f, 3.0f }, { 3.0f, 2.0f, 1.0f }, 30.0f);
+        m_obbC = SE::OBB::FromAABB({ -3.0f, 0.0f, -1.0f }, { -1.0f, 0.28f, 1.0f }); // step-up test
         m_physicsWorld.AddStaticOBB(m_obbA, 0.5f, 0.4f);
         m_physicsWorld.AddStaticOBB(m_obbB, 0.5f, 0.4f);
+        m_physicsWorld.AddStaticOBB(m_obbC, 0.5f, 0.4f);
+
+        // Character controller starts at eye level above scene centre.
+        m_cc.position = { 0.0f, 5.0f, 0.0f };
 
         SE_LOG_INFO("TestScene ready — Sponza (%u submeshes)", m_mesh->GetSubMeshCount());
         return true;
@@ -78,8 +84,64 @@ protected:
         float dt     = GetClock().GetDeltaTime();
         float aspect = (float)GetWindow().GetWidth() / (float)GetWindow().GetHeight();
 
+        bool          mouseBlocked = ImGui::GetIO().WantCaptureMouse;
+        SE::CameraController::Mode prevMode = m_camCtrl.GetMode();
+
         m_camCtrl.Update(dt, GetInput(), *m_camera,
-                         GetWindow().GetHandle(), ImGui::GetIO().WantCaptureMouse);
+                         GetWindow().GetHandle(), mouseBlocked);
+
+        SE::CameraController::Mode mode = m_camCtrl.GetMode();
+
+        // Init character position when first entering FPS mode.
+        if (prevMode == SE::CameraController::Mode::Orbit &&
+            mode     == SE::CameraController::Mode::FPS)
+        {
+            m_cc.position = { m_camera->eye.x,
+                              m_camera->eye.y - m_cc.eyeHeight,
+                              m_camera->eye.z };
+            m_cc.velY = 0.0f;
+        }
+
+        // Drive character + camera in FPS mode.
+        if (mode == SE::CameraController::Mode::FPS)
+        {
+            auto& inp = GetInput();
+            float yawRad = XMConvertToRadians(m_camCtrl.fps.yawDeg);
+            XMFLOAT3 fwd   = { sinf(yawRad), 0.0f,  cosf(yawRad) };
+            XMFLOAT3 right = { cosf(yawRad), 0.0f, -sinf(yawRad) };
+
+            XMFLOAT3 wishVel = { 0.0f, 0.0f, 0.0f };
+            if (inp.IsKeyDown('W')) { wishVel.x += fwd.x;   wishVel.z += fwd.z; }
+            if (inp.IsKeyDown('S')) { wishVel.x -= fwd.x;   wishVel.z -= fwd.z; }
+            if (inp.IsKeyDown('D')) { wishVel.x += right.x; wishVel.z += right.z; }
+            if (inp.IsKeyDown('A')) { wishVel.x -= right.x; wishVel.z -= right.z; }
+
+            // Normalise diagonal, then scale to moveSpeed.
+            float len2 = wishVel.x * wishVel.x + wishVel.z * wishVel.z;
+            if (len2 > 1.0f) {
+                float inv = 1.0f / sqrtf(len2);
+                wishVel.x *= inv; wishVel.z *= inv;
+            }
+            wishVel.x *= m_cc.moveSpeed;
+            wishVel.z *= m_cc.moveSpeed;
+
+            if (inp.IsKeyPressed(VK_SPACE)) m_cc.Jump();
+
+            m_physicsWorld.StepCharacter(m_cc, wishVel, dt);
+
+            // Sync camera to character eye.
+            float pitchRad = XMConvertToRadians(m_camCtrl.fps.pitchDeg);
+            XMFLOAT3 eye  = m_cc.GetEyePosition();
+            XMFLOAT3 look = {
+                sinf(yawRad) * cosf(pitchRad),
+                sinf(pitchRad),
+                cosf(yawRad) * cosf(pitchRad)
+            };
+            m_camera->eye    = eye;
+            m_camera->target = { eye.x + look.x, eye.y + look.y, eye.z + look.z };
+            m_camera->up     = { 0.0f, 1.0f, 0.0f };
+        }
+
         m_scene.Update(dt);
         m_physicsWorld.Step(dt);
 
@@ -118,6 +180,16 @@ protected:
                                     { 1.0f, 0.85f, 0.1f });
             m_pipeline.DrawWireBox(ctx, m_obbA.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
             m_pipeline.DrawWireBox(ctx, m_obbB.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
+            m_pipeline.DrawWireBox(ctx, m_obbC.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
+
+            // Character capsule bottom+top cap markers.
+            if (m_camCtrl.GetMode() == SE::CameraController::Mode::Orbit)
+            {
+                XMFLOAT3 bottom = { m_cc.position.x, m_cc.position.y + m_cc.radius, m_cc.position.z };
+                XMFLOAT3 top    = { m_cc.position.x, m_cc.position.y + m_cc.height - m_cc.radius, m_cc.position.z };
+                m_pipeline.DrawWireSphere(ctx, bottom, m_cc.radius, { 1.0f, 0.4f, 0.8f });
+                m_pipeline.DrawWireSphere(ctx, top,    m_cc.radius, { 1.0f, 0.4f, 0.8f });
+            }
         }
 
         if (m_rayHitValid)
@@ -142,8 +214,12 @@ private:
         ImGui::Text("Camera  [Tab to switch]");
         if (m_camCtrl.GetMode() == SE::CameraController::Mode::FPS)
         {
-            ImGui::Text("  FPS — WASD move, RMB look");
-            ImGui::SliderFloat("Move Speed", &m_camCtrl.fps.moveSpeed, 1.0f, 40.0f);
+            ImGui::Text("  FPS — WASD move, RMB look, Space jump");
+            ImGui::SliderFloat("Move Speed", &m_cc.moveSpeed,  1.0f, 20.0f);
+            ImGui::SliderFloat("Jump Speed", &m_cc.jumpSpeed,  2.0f, 20.0f);
+            ImGui::Text("  pos (%.1f, %.1f, %.1f)  vy=%.2f  %s",
+                m_cc.position.x, m_cc.position.y, m_cc.position.z,
+                m_cc.velY, m_cc.isGrounded ? "GROUNDED" : "air");
         }
         else
         {
@@ -173,9 +249,13 @@ private:
             ImGui::SameLine();
             ImGui::Checkbox("Raycast", &m_castRay);
 
+            if (ImGui::Checkbox("Gravity", &m_gravityEnabled))
+            {
+                m_ballRigidBody->useGravity = m_gravityEnabled;
+                m_cc.gravityEnabled         = m_gravityEnabled;
+            }
             ImGui::DragFloat3("Spawn pos",    &m_ballSpawn.x,                1.0f);
             ImGui::SliderFloat("Radius",      &m_ballRadius,                 0.1f, 10.0f);
-            ImGui::Checkbox("Gravity",        &m_ballRigidBody->useGravity);
             ImGui::SliderFloat("Mass",        &m_ballRigidBody->mass,        0.1f, 10.0f);
             ImGui::SliderFloat("Restitution", &m_ballRigidBody->restitution, 0.0f, 1.0f);
             ImGui::SliderFloat("Friction",    &m_ballRigidBody->friction,    0.0f, 1.0f);
@@ -188,6 +268,7 @@ private:
                     0.6f, 0.4f);
                 m_physicsWorld.AddStaticOBB(m_obbA, 0.5f, 0.4f);
                 m_physicsWorld.AddStaticOBB(m_obbB, 0.5f, 0.4f);
+                m_physicsWorld.AddStaticOBB(m_obbC, 0.5f, 0.4f);
             }
             ImGui::Text("  pos (%.1f, %.1f, %.1f)",
                 m_ballTransform->position.x, m_ballTransform->position.y, m_ballTransform->position.z);
@@ -326,9 +407,12 @@ private:
     float                   m_floorY        = 0.0f;
     SE::OBB                 m_obbA;
     SE::OBB                 m_obbB;
+    SE::OBB                 m_obbC; // low step for step-up test
+    SE::CharacterController m_cc;
 
-    bool                         m_showColliders = true;
-    bool                         m_castRay       = false;
+    bool                         m_gravityEnabled = true;
+    bool                         m_showColliders  = true;
+    bool                         m_castRay        = false;
     SE::PhysicsWorld::RaycastHit m_rayHit        = {};
     bool                         m_rayHitValid   = false;
 };

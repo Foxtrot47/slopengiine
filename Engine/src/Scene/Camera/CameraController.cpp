@@ -4,14 +4,13 @@
 
 namespace SE {
 
-void CameraController::Update(float dt, InputManager& input, CameraComponent& cam,
+void CameraController::Update(float /*dt*/, InputManager& input, CameraComponent& cam,
                                HWND hwnd, bool mouseBlocked)
 {
     if (input.IsKeyPressed(VK_TAB))
     {
         if (m_mode == Mode::Orbit)
         {
-            fps.position = cam.eye;
             fps.yawDeg   = orbit.yawDeg;
             fps.pitchDeg = orbit.pitchDeg;
             m_mode = Mode::FPS;
@@ -25,7 +24,7 @@ void CameraController::Update(float dt, InputManager& input, CameraComponent& ca
     if (m_mode == Mode::Orbit)
         UpdateOrbit(input, cam, mouseBlocked);
     else
-        UpdateFPS(dt, input, cam, hwnd, mouseBlocked);
+        UpdateFPS(input, cam, hwnd, mouseBlocked);
 }
 
 void CameraController::UpdateOrbit(const InputManager& input, CameraComponent& cam, bool mouseBlocked)
@@ -63,11 +62,11 @@ void CameraController::UpdateOrbit(const InputManager& input, CameraComponent& c
     cam.up     = { 0.0f, 1.0f, 0.0f };
 }
 
-void CameraController::UpdateFPS(float dt, InputManager& input, CameraComponent& cam,
+// UpdateFPS handles only mouse look (yaw/pitch).
+// Camera eye/target and character movement are set by the caller (main.cpp via CharacterController).
+void CameraController::UpdateFPS(InputManager& input, CameraComponent& /*cam*/,
                                   HWND hwnd, bool mouseBlocked)
 {
-    using namespace DirectX;
-
     bool rmbDown = input.IsKeyDown(VK_RBUTTON) && !mouseBlocked;
 
     if (rmbDown && !m_fpsCapturing)
@@ -107,30 +106,6 @@ void CameraController::UpdateFPS(float dt, InputManager& input, CameraComponent&
         ClientToScreen(hwnd, &screen);
         SetCursorPos(screen.x, screen.y);
     }
-
-    float yaw   = XMConvertToRadians(fps.yawDeg);
-    float pitch = XMConvertToRadians(fps.pitchDeg);
-
-    XMFLOAT3 fwd   = { sinf(yaw), 0.0f,  cosf(yaw) };
-    XMFLOAT3 right = { cosf(yaw), 0.0f, -sinf(yaw) };
-
-    float spd = fps.moveSpeed * dt;
-    if (input.IsKeyDown('W')) { fps.position.x += fwd.x * spd;   fps.position.z += fwd.z * spd; }
-    if (input.IsKeyDown('S')) { fps.position.x -= fwd.x * spd;   fps.position.z -= fwd.z * spd; }
-    if (input.IsKeyDown('D')) { fps.position.x += right.x * spd; fps.position.z += right.z * spd; }
-    if (input.IsKeyDown('A')) { fps.position.x -= right.x * spd; fps.position.z -= right.z * spd; }
-    if (input.IsKeyDown('E') || input.IsKeyDown(VK_SPACE))   fps.position.y += spd;
-    if (input.IsKeyDown('Q') || input.IsKeyDown(VK_CONTROL)) fps.position.y -= spd;
-
-    XMFLOAT3 look = {
-        sinf(yaw) * cosf(pitch),
-        sinf(pitch),
-        cosf(yaw) * cosf(pitch)
-    };
-
-    cam.eye    = fps.position;
-    cam.target = { fps.position.x + look.x, fps.position.y + look.y, fps.position.z + look.z };
-    cam.up     = { 0.0f, 1.0f, 0.0f };
 }
 
 } // namespace SE
