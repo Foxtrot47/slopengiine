@@ -169,6 +169,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M31 | ~~Narrowphase (AABB-AABB, Sphere-Sphere, AABB-Sphere) — bundled with M29~~ ✓ |
 | M32 | ~~Rigidbody component; linear dynamics (integrate velocity/position)~~ ✓ |
 | M33 | ~~Collision response; impulse resolution, restitution, friction~~ ✓ |
+| M33b | ~~Debug collider visualization — `ForwardPipeline::DrawWireSphere` / `DrawWireAABB`~~ ✓ |
 | M34 | Raycasting against scene colliders |
 | M35 | OBB narrowphase + SAT |
 | M36 | Simple character controller (capsule + step-up + slope limit) |
@@ -252,3 +253,21 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 7. **Platform assumption**: Windows 10+, x64 only. No cross-platform abstractions.
 8. **Debug-first**: CMake default is Debug. RelWithDebInfo for profiling. Release only for final validation.
 9. **Update this file** — check off milestones as they complete; add notes about key design decisions made during implementation so future sessions have context.
+
+---
+
+## Design Notes
+
+### Renderer architecture (post-refactor)
+- `Renderer` = D3D11 device / swap chain / surface management only.
+- `ForwardPipeline` = shading strategy: owns VS/PS (`Shaders/Basic.hlsl`), input layout, TransformCB (b0), MaterialCB (b3), sampler, and all debug geometry buffers. Shadow pre-pass will feed *into* ForwardPipeline, not sit alongside it. `DeferredPipeline` is the future genuine sibling (M45).
+- `LightEnvironment` = directional + point light state only (`Init`, `BindPS`). No ImGui. Game code reads public fields directly for debug controls.
+- `CameraController` = single class with nested `OrbitState`/`FPSState`; `UpdateOrbit`/`UpdateFPS` are private methods. Tab switches modes.
+
+### Debug collider visualization
+- `ForwardPipeline::DrawWireSphere`, `DrawWireAABB`, `DrawWireDisc` all use `LINELIST` topology and restore `TRIANGLELIST` after each call.
+- Wire draws bypass lighting via `Unlit` flag in `MaterialCB` (b3): `float Unlit` replaces one pad float; PS early-exits with `float4(AlbedoTint, 1)` when `Unlit > 0.5`.
+- `DrawWireDisc` reuses ring 0 of `m_wireSphereIB` (the XZ circle, first 64 indices) — no extra GPU buffer.
+- Do NOT add an `AABB` overload to `DrawWireAABB` — Renderer must not include Physics headers. Pass `aabb.min, aabb.max` at call site.
+- Scene draws: green wire sphere = ball collider, yellow disc (r=20) = floor plane collider. `m_sponzaAABB` is a test volume for intersection tests, NOT a physics collider — don't confuse the two.
+- Toggle via `m_showColliders` bool in TestScene; checkbox in the Physics panel.

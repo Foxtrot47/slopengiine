@@ -41,6 +41,15 @@ public:
     void DrawSphere(ID3D11DeviceContext* ctx,
                     DirectX::XMFLOAT3 position, float radius, DirectX::XMFLOAT3 tint);
 
+    // Debug wire draws — unlit flat color, LINELIST topology.
+    void DrawWireSphere(ID3D11DeviceContext* ctx,
+                        DirectX::XMFLOAT3 position, float radius, DirectX::XMFLOAT3 color);
+    void DrawWireAABB(ID3D11DeviceContext* ctx,
+                      DirectX::XMFLOAT3 min, DirectX::XMFLOAT3 max, DirectX::XMFLOAT3 color);
+    // Circle in the XZ plane at center.y — useful for visualizing infinite horizontal planes.
+    void DrawWireDisc(ID3D11DeviceContext* ctx,
+                      DirectX::XMFLOAT3 center, float radius, DirectX::XMFLOAT3 color);
+
 private:
     struct TransformCBData
     {
@@ -51,7 +60,7 @@ private:
     struct MaterialParamsCBData
     {
         DirectX::XMFLOAT3 albedoTint; float roughnessScale;
-        float metallic; float _pad[3];
+        float metallic; float unlit; float _pad[2];
     };
 
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vs;
@@ -63,6 +72,10 @@ private:
     SamplerState                         m_sampler;
     VertexBuffer                         m_sphereVB;
     IndexBuffer                          m_sphereIB;
+    VertexBuffer                         m_wireSphereVB;
+    IndexBuffer                          m_wireSphereIB;
+    VertexBuffer                         m_wireAABBVB;
+    IndexBuffer                          m_wireAABBIB;
 
     AssetHandle<Texture2D> m_defaultWhite;
     AssetHandle<Texture2D> m_defaultNormal;

@@ -7,6 +7,47 @@ namespace SE {
 
 namespace {
 
+void BuildWireAABB(std::vector<MeshVertex>& verts, std::vector<uint32_t>& indices)
+{
+    // Unit cube corners (-1..1); scaled in draw call to match AABB half-extents.
+    static const float c[8][3] = {
+        {-1,-1,-1}, {1,-1,-1}, {1,1,-1}, {-1,1,-1},
+        {-1,-1, 1}, {1,-1, 1}, {1,1, 1}, {-1,1, 1},
+    };
+    for (auto& v : c) { MeshVertex mv = {}; mv.x = v[0]; mv.y = v[1]; mv.z = v[2]; verts.push_back(mv); }
+
+    static const uint32_t edges[24] = {
+        0,1, 1,2, 2,3, 3,0,   // front face
+        4,5, 5,6, 6,7, 7,4,   // back face
+        0,4, 1,5, 2,6, 3,7,   // connecting edges
+    };
+    for (auto i : edges) indices.push_back(i);
+}
+
+void BuildWireSphere(int segs, std::vector<MeshVertex>& verts, std::vector<uint32_t>& indices)
+{
+    // Three great circles (XZ, XY, YZ planes); radius=1, scaled in draw call.
+    for (int ring = 0; ring < 3; ++ring)
+    {
+        auto base = static_cast<uint32_t>(verts.size());
+        for (int i = 0; i < segs; ++i)
+        {
+            float t = DirectX::XM_2PI * i / segs;
+            float c = cosf(t), s = sinf(t);
+            MeshVertex v = {};
+            if      (ring == 0) { v.x = c; v.y = 0; v.z = s; }
+            else if (ring == 1) { v.x = c; v.y = s; v.z = 0; }
+            else                { v.x = 0; v.y = c; v.z = s; }
+            verts.push_back(v);
+        }
+        for (int i = 0; i < segs; ++i)
+        {
+            indices.push_back(base + i);
+            indices.push_back(base + (i + 1) % static_cast<uint32_t>(segs));
+        }
+    }
+}
+
 void BuildSphereMesh(float radius, int rings, int segs,
     std::vector<MeshVertex>& verts, std::vector<uint32_t>& indices)
 {
@@ -97,6 +138,22 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets)
             static_cast<uint32_t>(verts.size() * sizeof(MeshVertex)), sizeof(MeshVertex));
         m_sphereIB.Create(device, idx.data(), static_cast<uint32_t>(idx.size()));
     }
+    {
+        std::vector<MeshVertex> verts;
+        std::vector<uint32_t>   idx;
+        BuildWireSphere(32, verts, idx);
+        m_wireSphereVB.Create(device, verts.data(),
+            static_cast<uint32_t>(verts.size() * sizeof(MeshVertex)), sizeof(MeshVertex));
+        m_wireSphereIB.Create(device, idx.data(), static_cast<uint32_t>(idx.size()));
+    }
+    {
+        std::vector<MeshVertex> verts;
+        std::vector<uint32_t>   idx;
+        BuildWireAABB(verts, idx);
+        m_wireAABBVB.Create(device, verts.data(),
+            static_cast<uint32_t>(verts.size() * sizeof(MeshVertex)), sizeof(MeshVertex));
+        m_wireAABBIB.Create(device, idx.data(), static_cast<uint32_t>(idx.size()));
+    }
 
     m_defaultWhite  = assets.GetDefaultWhite();
     m_defaultNormal = assets.GetDefaultNormal();
@@ -155,7 +212,8 @@ void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,
     mc.albedoTint     = tint;
     mc.roughnessScale = roughnessScale;
     mc.metallic       = metallic;
-    mc._pad[0] = mc._pad[1] = mc._pad[2] = 0.0f;
+    mc.unlit          = 0.0f;
+    mc._pad[0] = mc._pad[1] = 0.0f;
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 }
@@ -204,6 +262,106 @@ void ForwardPipeline::DrawSphere(ID3D11DeviceContext* ctx,
     m_sphereVB.Bind(ctx);
     m_sphereIB.Bind(ctx);
     ctx->DrawIndexed(m_sphereIB.GetCount(), 0, 0);
+}
+
+void ForwardPipeline::DrawWireSphere(ID3D11DeviceContext* ctx,
+                                      DirectX::XMFLOAT3 position, float radius,
+                                      DirectX::XMFLOAT3 color)
+{
+    using namespace DirectX;
+
+    MaterialParamsCBData mc = {};
+    mc.albedoTint = color; mc.roughnessScale = 1.0f; mc.unlit = 1.0f;
+    m_materialCB.Update(ctx, mc);
+    m_materialCB.BindPS(ctx, 3);
+
+    m_defaultWhite->BindPS(ctx, 0);
+    m_defaultWhite->BindPS(ctx, 1);
+    m_defaultNormal->BindPS(ctx, 2);
+
+    TransformCBData cb;
+    XMStoreFloat4x4(&cb.model,
+        XMMatrixScaling(radius, radius, radius) *
+        XMMatrixTranslation(position.x, position.y, position.z));
+    XMStoreFloat4x4(&cb.view,       m_view);
+    XMStoreFloat4x4(&cb.projection, m_proj);
+    m_transformCB.Update(ctx, cb);
+    m_transformCB.BindVS(ctx, 0);
+
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
+    m_wireSphereVB.Bind(ctx);
+    m_wireSphereIB.Bind(ctx);
+    ctx->DrawIndexed(m_wireSphereIB.GetCount(), 0, 0);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
+
+void ForwardPipeline::DrawWireAABB(ID3D11DeviceContext* ctx,
+                                    DirectX::XMFLOAT3 mn, DirectX::XMFLOAT3 mx,
+                                    DirectX::XMFLOAT3 color)
+{
+    using namespace DirectX;
+
+    MaterialParamsCBData mc = {};
+    mc.albedoTint = color; mc.roughnessScale = 1.0f; mc.unlit = 1.0f;
+    m_materialCB.Update(ctx, mc);
+    m_materialCB.BindPS(ctx, 3);
+
+    m_defaultWhite->BindPS(ctx, 0);
+    m_defaultWhite->BindPS(ctx, 1);
+    m_defaultNormal->BindPS(ctx, 2);
+
+    // Unit cube spans -1..1; scale by half-extents then translate to center.
+    float hx = (mx.x - mn.x) * 0.5f, cx = (mn.x + mx.x) * 0.5f;
+    float hy = (mx.y - mn.y) * 0.5f, cy = (mn.y + mx.y) * 0.5f;
+    float hz = (mx.z - mn.z) * 0.5f, cz = (mn.z + mx.z) * 0.5f;
+
+    TransformCBData cb;
+    XMStoreFloat4x4(&cb.model,
+        XMMatrixScaling(hx, hy, hz) *
+        XMMatrixTranslation(cx, cy, cz));
+    XMStoreFloat4x4(&cb.view,       m_view);
+    XMStoreFloat4x4(&cb.projection, m_proj);
+    m_transformCB.Update(ctx, cb);
+    m_transformCB.BindVS(ctx, 0);
+
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
+    m_wireAABBVB.Bind(ctx);
+    m_wireAABBIB.Bind(ctx);
+    ctx->DrawIndexed(m_wireAABBIB.GetCount(), 0, 0);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
+
+void ForwardPipeline::DrawWireDisc(ID3D11DeviceContext* ctx,
+                                    DirectX::XMFLOAT3 center, float radius,
+                                    DirectX::XMFLOAT3 color)
+{
+    using namespace DirectX;
+
+    MaterialParamsCBData mc = {};
+    mc.albedoTint = color; mc.roughnessScale = 1.0f; mc.unlit = 1.0f;
+    m_materialCB.Update(ctx, mc);
+    m_materialCB.BindPS(ctx, 3);
+
+    m_defaultWhite->BindPS(ctx, 0);
+    m_defaultWhite->BindPS(ctx, 1);
+    m_defaultNormal->BindPS(ctx, 2);
+
+    TransformCBData cb;
+    XMStoreFloat4x4(&cb.model,
+        XMMatrixScaling(radius, radius, radius) *
+        XMMatrixTranslation(center.x, center.y, center.z));
+    XMStoreFloat4x4(&cb.view,       m_view);
+    XMStoreFloat4x4(&cb.projection, m_proj);
+    m_transformCB.Update(ctx, cb);
+    m_transformCB.BindVS(ctx, 0);
+
+    // Reuse ring 0 of the wire sphere mesh — it sits in the XZ plane (y=0).
+    // 32 segments × 2 indices per line = 64 indices.
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
+    m_wireSphereVB.Bind(ctx);
+    m_wireSphereIB.Bind(ctx);
+    ctx->DrawIndexed(64, 0, 0);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
 } // namespace SE
