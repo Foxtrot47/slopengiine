@@ -269,7 +269,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 - Wire draws bypass lighting via `Unlit` flag in `MaterialCB` (b3): `float Unlit` replaces one pad float; PS early-exits with `float4(AlbedoTint, 1)` when `Unlit > 0.5`.
 - `DrawWireDisc` reuses ring 0 of `m_wireSphereIB` (the XZ circle, first 64 indices) — no extra GPU buffer.
 - Do NOT add an `AABB` overload to `DrawWireAABB` — Renderer must not include Physics headers. Pass `aabb.min, aabb.max` at call site.
-- Scene draws: green wire sphere = ball collider, yellow disc (r=20) = floor plane collider, cyan wire boxes = static OBBs.
+- Scene draws: green wire sphere = ball collider, yellow wire box = 60×60 floor OBB, cyan wire boxes = static OBBs.
 - Toggle via `m_showColliders` bool in TestScene; checkbox in the Physics panel.
 
 ### Raycasting (M34)
