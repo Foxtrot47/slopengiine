@@ -1,5 +1,7 @@
 #include "Engine/Physics/PhysicsWorld.h"
+#include "Engine/Physics/Intersect.h"
 #include <cmath>
+#include <cfloat>
 
 namespace SE {
 
@@ -44,6 +46,44 @@ void PhysicsWorld::Clear()
 {
     m_spheres.clear();
     m_planes.clear();
+}
+
+bool PhysicsWorld::Raycast(const Ray& ray, RaycastHit& hit) const
+{
+    bool  found = false;
+    float best  = FLT_MAX;
+
+    for (const auto& sb : m_spheres)
+    {
+        Sphere s = { sb.transform->position, sb.radius };
+        float  t = 0.0f;
+        if (!Intersects(ray, s, t) || t >= best) continue;
+
+        best          = t;
+        found         = true;
+        hit.t         = t;
+        hit.point     = ray.PointAt(t);
+        hit.transform = sb.transform;
+
+        XMVECTOR n = XMVector3Normalize(
+            XMVectorSubtract(XMLoadFloat3(&hit.point), XMLoadFloat3(&sb.transform->position)));
+        XMStoreFloat3(&hit.normal, n);
+    }
+
+    for (const auto& sp : m_planes)
+    {
+        float t = 0.0f;
+        if (!Intersects(ray, sp.plane, t) || t >= best) continue;
+
+        best          = t;
+        found         = true;
+        hit.t         = t;
+        hit.point     = ray.PointAt(t);
+        hit.normal    = sp.plane.normal;
+        hit.transform = nullptr;
+    }
+
+    return found;
 }
 
 void PhysicsWorld::Step(float /*dt*/)
