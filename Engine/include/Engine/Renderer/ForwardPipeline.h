@@ -49,6 +49,9 @@ public:
     // Circle in the XZ plane at center.y — useful for visualizing infinite horizontal planes.
     void DrawWireDisc(ID3D11DeviceContext* ctx,
                       DirectX::XMFLOAT3 center, float radius, DirectX::XMFLOAT3 color);
+    // Wire OBB drawn using the OBB's own world matrix (unit cube -1..1 mapped by OBB::GetWorldMatrix()).
+    void DrawWireBox(ID3D11DeviceContext* ctx,
+                     DirectX::XMMATRIX world, DirectX::XMFLOAT3 color);
     // Single world-space line segment. Uploads 2 vertices via Map/Unmap each call.
     void DrawLine(ID3D11DeviceContext* ctx,
                   DirectX::XMFLOAT3 from, DirectX::XMFLOAT3 to, DirectX::XMFLOAT3 color);

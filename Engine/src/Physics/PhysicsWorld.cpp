@@ -42,10 +42,16 @@ void PhysicsWorld::AddStaticPlane(Plane plane, float restitution, float friction
     m_planes.push_back({ plane, restitution, friction });
 }
 
+void PhysicsWorld::AddStaticOBB(OBB obb, float restitution, float friction)
+{
+    m_staticOBBs.push_back({ obb, restitution, friction });
+}
+
 void PhysicsWorld::Clear()
 {
     m_spheres.clear();
     m_planes.clear();
+    m_staticOBBs.clear();
 }
 
 bool PhysicsWorld::Raycast(const Ray& ray, RaycastHit& hit) const
@@ -64,6 +70,7 @@ bool PhysicsWorld::Raycast(const Ray& ray, RaycastHit& hit) const
         hit.t         = t;
         hit.point     = ray.PointAt(t);
         hit.transform = sb.transform;
+        hit.kind      = RaycastHit::Kind::Sphere;
 
         XMVECTOR n = XMVector3Normalize(
             XMVectorSubtract(XMLoadFloat3(&hit.point), XMLoadFloat3(&sb.transform->position)));
@@ -81,6 +88,22 @@ bool PhysicsWorld::Raycast(const Ray& ray, RaycastHit& hit) const
         hit.point     = ray.PointAt(t);
         hit.normal    = sp.plane.normal;
         hit.transform = nullptr;
+        hit.kind      = RaycastHit::Kind::Plane;
+    }
+
+    for (const auto& so : m_staticOBBs)
+    {
+        float     t  = 0.0f;
+        XMFLOAT3  n  = {};
+        if (!Intersects(ray, so.obb, t, n) || t >= best) continue;
+
+        best          = t;
+        found         = true;
+        hit.t         = t;
+        hit.point     = ray.PointAt(t);
+        hit.normal    = n;
+        hit.transform = nullptr;
+        hit.kind      = RaycastHit::Kind::OBB;
     }
 
     return found;
@@ -92,8 +115,8 @@ void PhysicsWorld::Step(float /*dt*/)
     {
         if (s.body->isStatic || !s.body->enabled) continue;
 
-        for (const auto& p : m_planes)
-            ResolveSphereVsPlane(s, p);
+        for (const auto& p : m_planes)  ResolveSphereVsPlane(s, p);
+        for (const auto& o : m_staticOBBs) ResolveSphereVsOBB(s, o);
     }
 
     for (size_t i = 0; i < m_spheres.size(); ++i)
@@ -162,6 +185,48 @@ void PhysicsWorld::ResolveSphereVsSphere(SphereBody& a, SphereBody& b)
 
     a.body->velocity = Sub(a.body->velocity, Scale(n, j * invMA));
     b.body->velocity = Add(b.body->velocity, Scale(n, j * invMB));
+}
+
+void PhysicsWorld::ResolveSphereVsOBB(SphereBody& s, const StaticOBB& so)
+{
+    const OBB&    obb = so.obb;
+    const XMFLOAT3& C = s.transform->position;
+
+    // Closest point on OBB to sphere centre.
+    XMFLOAT3 d       = Sub(C, obb.center);
+    XMFLOAT3 closest = obb.center;
+    for (int i = 0; i < 3; ++i)
+    {
+        float proj = Dot(d, obb.axes[i]);
+        float he   = (&obb.halfExtents.x)[i];
+        float p    = proj < -he ? -he : (proj > he ? he : proj);
+        closest.x += p * obb.axes[i].x;
+        closest.y += p * obb.axes[i].y;
+        closest.z += p * obb.axes[i].z;
+    }
+
+    XMFLOAT3 delta = Sub(C, closest);
+    float     dist  = Len(delta);
+
+    if (dist >= s.radius) return;
+
+    XMFLOAT3 n = (dist < 1e-6f)
+        ? XMFLOAT3{ 0.0f, 1.0f, 0.0f }
+        : Scale(delta, 1.0f / dist);
+
+    float pen = s.radius - dist;
+    s.transform->position = Add(s.transform->position, Scale(n, pen));
+
+    float vN = Dot(s.body->velocity, n);
+    if (vN >= 0.0f) return;
+
+    float e = so.restitution * s.body->restitution;
+    s.body->velocity = Add(s.body->velocity, Scale(n, -(1.0f + e) * vN));
+
+    XMFLOAT3 newN = Scale(n, Dot(s.body->velocity, n));
+    XMFLOAT3 vTan = Sub(s.body->velocity, newN);
+    float     mu  = so.friction * s.body->friction;
+    s.body->velocity = Add(newN, Scale(vTan, 1.0f - mu));
 }
 
 } // namespace SE
