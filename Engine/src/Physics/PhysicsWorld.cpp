@@ -114,9 +114,20 @@ void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, floa
     const float cosSlope = cosf(XMConvertToRadians(cc.slopeLimit));
 
     // ---- Gravity ----
-    if (!cc.isGrounded && cc.gravityEnabled)
+    bool wasGrounded = cc.isGrounded;
+    if (!wasGrounded && cc.gravityEnabled)
         cc.velY -= cc.gravAccel * dt;
+
     cc.isGrounded = false;
+    XMFLOAT3 accNormal = { 0.0f, 0.0f, 0.0f };
+
+    // Register any surface contact; accumulate normals for Jump() direction.
+    auto addContact = [&](XMFLOAT3 n) {
+        accNormal.x += n.x;
+        accNormal.y += n.y;
+        accNormal.z += n.z;
+        cc.isGrounded = true;
+    };
 
     // ---- Vertical pass ----
     cc.position.y += cc.velY * dt;
@@ -136,7 +147,8 @@ void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, floa
         cc.position.x += n.x * pen;
         cc.position.y += n.y * pen;
         cc.position.z += n.z * pen;
-        if (n.y > cosSlope) { cc.isGrounded = true; if (cc.velY < 0.0f) cc.velY = 0.0f; }
+        addContact(n);
+        if (n.y > cosSlope && cc.velY < 0.0f) cc.velY = 0.0f;
     }
 
     for (const auto& so : m_staticOBBs)
@@ -161,12 +173,16 @@ void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, floa
         cc.position.x += n.x * pen;
         cc.position.y += n.y * pen;
         cc.position.z += n.z * pen;
-        if (n.y > cosSlope) { cc.isGrounded = true; if (cc.velY < 0.0f) cc.velY = 0.0f; }
+        addContact(n);
+        if (n.y > cosSlope && cc.velY < 0.0f) cc.velY = 0.0f;
     }
 
     // ---- Horizontal pass ----
-    cc.position.x += wishVel.x * dt;
-    cc.position.z += wishVel.z * dt;
+    const float decay = fmaxf(0.0f, 1.0f - 6.0f * dt);
+    cc.physVelX *= decay;
+    cc.physVelZ *= decay;
+    cc.position.x += (wishVel.x + cc.physVelX) * dt;
+    cc.position.z += (wishVel.z + cc.physVelZ) * dt;
 
     for (const auto& sp : m_planes)
     {
@@ -176,6 +192,7 @@ void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, floa
         float pen = cc.radius - dist;
         cc.position.x += sp.plane.normal.x * pen;
         cc.position.z += sp.plane.normal.z * pen;
+        addContact(sp.plane.normal);
     }
 
     for (const auto& so : m_staticOBBs)
@@ -207,16 +224,22 @@ void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, floa
 
         if (obbMaxY > cc.position.y && obbMaxY <= cc.position.y + cc.stepHeight)
         {
-            cc.position.y  = obbMaxY;
-            cc.isGrounded  = true;
+            cc.position.y = obbMaxY;
             if (cc.velY < 0.0f) cc.velY = 0.0f;
+            addContact({ 0.0f, 1.0f, 0.0f });
         }
         else
         {
             cc.position.x += n.x * pen;
             cc.position.z += n.z * pen;
+            addContact(n);
         }
     }
+
+    // ---- Finalize contact normal ----
+    float len = Len(accNormal);
+    if (len > 1e-6f)
+        cc.contactNormal = Scale(accNormal, 1.0f / len);
 }
 
 void PhysicsWorld::Step(float /*dt*/)
