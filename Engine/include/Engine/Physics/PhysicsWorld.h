@@ -4,6 +4,7 @@
 #include "Engine/Physics/Ray.h"
 #include "Engine/Physics/Sphere.h"
 #include "Engine/Physics/OBB.h"
+#include "Engine/Physics/CharacterController.h"
 #include "Engine/Scene/TransformComponent.h"
 #include "Engine/Physics/RigidBodyComponent.h"
 
@@ -51,6 +52,10 @@ public:
 
     // Returns true and fills hit with the closest intersection along ray.
     bool Raycast(const Ray& ray, RaycastHit& hit) const;
+
+    // Move a character capsule with gravity + collision response (planes and static OBBs).
+    // wishVel is the desired horizontal velocity (not yet multiplied by dt).
+    void StepCharacter(CharacterController& cc, DirectX::XMFLOAT3 wishVel, float dt);
 
     // Collision detection + impulse resolution only.
     // Call AFTER Scene::Update() so integration has already run.

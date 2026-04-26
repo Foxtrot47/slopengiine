@@ -172,7 +172,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M33b | ~~Debug collider visualization — `ForwardPipeline::DrawWireSphere` / `DrawWireAABB`~~ ✓ |
 | M34 | ~~Raycasting against scene colliders~~ ✓ |
 | M35 | ~~OBB narrowphase + SAT~~ ✓ |
-| M36 | Simple character controller (capsule + step-up + slope limit) |
+| M36 | ~~Simple character controller (capsule + step-up + slope limit)~~ ✓ |
 
 ### Phase 8 — Advanced Rendering Pipeline
 
@@ -285,4 +285,14 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 - `Intersects(OBB, Sphere)`: closest-point test; clamp sphere centre projection onto each axis.
 - `PhysicsWorld::ResolveSphereVsOBB`: closest-point penetration, normal impulse + friction, same pattern as ResolveSphereVsPlane.
 - `ForwardPipeline::DrawWireBox(ctx, XMMATRIX world, color)`: reuses `m_wireAABBVB/IB` (unit cube) with provided OBB world matrix. Call site passes `obb.GetWorldMatrix()`.
+
+### Character controller (M36)
+- `CharacterController` struct: `position` = feet (bottom of capsule). `radius`, `height`, `eyeHeight`, `stepHeight`, `slopeLimit`, `jumpSpeed`, `gravAccel`, `moveSpeed`, `gravityEnabled`.
+- `GetEyePosition()` = `{pos.x, pos.y + eyeHeight, pos.z}`. `Jump()` sets `velY = jumpSpeed` if grounded.
+- `PhysicsWorld::StepCharacter` runs two passes: (1) gravity + vertical move → resolve floors/ceilings via planes then OBBs (sets `isGrounded`); (2) horizontal move → resolve walls + step-up for OBBs.
+- Collision uses a single sphere at `bottomCenter = {pos.x, pos.y + radius, pos.z}` — not a true two-sphere capsule.
+- Step-up: OBB `maxY` = `center.y + Σ|axes[i].y|*halfExtents[i]`. If `maxY > feet && maxY <= feet + stepHeight` → snap feet up to maxY instead of horizontal push.
+- Slope limit: `cosSlope = cos(slopeLimit°)`. `n.y > cosSlope` → floor (grounding); else → wall.
+- `CameraController::UpdateFPS` is mouse-look only (RMB capture, yaw/pitch). WASD + jump + `StepCharacter` live in main.cpp. Camera eye = `cc.GetEyePosition()`, target = `eye + look(yaw, pitch)`.
+- Global gravity toggle in TestScene: `m_gravityEnabled` syncs `m_ballRigidBody->useGravity` and `m_cc.gravityEnabled` together.
 - Static OBBs drawn in cyan when `m_showColliders` is on.

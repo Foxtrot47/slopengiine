@@ -109,6 +109,116 @@ bool PhysicsWorld::Raycast(const Ray& ray, RaycastHit& hit) const
     return found;
 }
 
+void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, float dt)
+{
+    const float cosSlope = cosf(XMConvertToRadians(cc.slopeLimit));
+
+    // ---- Gravity ----
+    if (!cc.isGrounded && cc.gravityEnabled)
+        cc.velY -= cc.gravAccel * dt;
+    cc.isGrounded = false;
+
+    // ---- Vertical pass ----
+    cc.position.y += cc.velY * dt;
+
+    // Bottom sphere center is at feet + radius.
+    auto bottomCenter = [&]() -> XMFLOAT3 {
+        return { cc.position.x, cc.position.y + cc.radius, cc.position.z };
+    };
+
+    for (const auto& sp : m_planes)
+    {
+        XMFLOAT3 c    = bottomCenter();
+        float    dist = Dot(c, sp.plane.normal) - sp.plane.d;
+        if (dist >= cc.radius) continue;
+        float pen = cc.radius - dist;
+        const XMFLOAT3& n = sp.plane.normal;
+        cc.position.x += n.x * pen;
+        cc.position.y += n.y * pen;
+        cc.position.z += n.z * pen;
+        if (n.y > cosSlope) { cc.isGrounded = true; if (cc.velY < 0.0f) cc.velY = 0.0f; }
+    }
+
+    for (const auto& so : m_staticOBBs)
+    {
+        XMFLOAT3 c = bottomCenter();
+        XMFLOAT3 d = Sub(c, so.obb.center);
+        XMFLOAT3 closest = so.obb.center;
+        for (int i = 0; i < 3; ++i)
+        {
+            float proj = Dot(d, so.obb.axes[i]);
+            float he   = (&so.obb.halfExtents.x)[i];
+            float p    = proj < -he ? -he : (proj > he ? he : proj);
+            closest.x += p * so.obb.axes[i].x;
+            closest.y += p * so.obb.axes[i].y;
+            closest.z += p * so.obb.axes[i].z;
+        }
+        XMFLOAT3 delta = Sub(c, closest);
+        float     dist  = Len(delta);
+        if (dist >= cc.radius || dist < 1e-6f) continue;
+        XMFLOAT3 n = Scale(delta, 1.0f / dist);
+        float pen = cc.radius - dist;
+        cc.position.x += n.x * pen;
+        cc.position.y += n.y * pen;
+        cc.position.z += n.z * pen;
+        if (n.y > cosSlope) { cc.isGrounded = true; if (cc.velY < 0.0f) cc.velY = 0.0f; }
+    }
+
+    // ---- Horizontal pass ----
+    cc.position.x += wishVel.x * dt;
+    cc.position.z += wishVel.z * dt;
+
+    for (const auto& sp : m_planes)
+    {
+        XMFLOAT3 c    = bottomCenter();
+        float    dist = Dot(c, sp.plane.normal) - sp.plane.d;
+        if (dist >= cc.radius || sp.plane.normal.y > cosSlope) continue;
+        float pen = cc.radius - dist;
+        cc.position.x += sp.plane.normal.x * pen;
+        cc.position.z += sp.plane.normal.z * pen;
+    }
+
+    for (const auto& so : m_staticOBBs)
+    {
+        XMFLOAT3 c = bottomCenter();
+        XMFLOAT3 d = Sub(c, so.obb.center);
+        XMFLOAT3 closest = so.obb.center;
+        for (int i = 0; i < 3; ++i)
+        {
+            float proj = Dot(d, so.obb.axes[i]);
+            float he   = (&so.obb.halfExtents.x)[i];
+            float p    = proj < -he ? -he : (proj > he ? he : proj);
+            closest.x += p * so.obb.axes[i].x;
+            closest.y += p * so.obb.axes[i].y;
+            closest.z += p * so.obb.axes[i].z;
+        }
+        XMFLOAT3 delta = Sub(c, closest);
+        float     dist  = Len(delta);
+        if (dist >= cc.radius || dist < 1e-6f) continue;
+        XMFLOAT3 n = Scale(delta, 1.0f / dist);
+        float pen = cc.radius - dist;
+        if (n.y > cosSlope) continue; // floor — handled in vertical pass
+
+        // Step-up: if the obstacle top is within stepHeight above feet, ride over it.
+        float obbMaxY = so.obb.center.y
+            + fabsf(so.obb.axes[0].y) * so.obb.halfExtents.x
+            + fabsf(so.obb.axes[1].y) * so.obb.halfExtents.y
+            + fabsf(so.obb.axes[2].y) * so.obb.halfExtents.z;
+
+        if (obbMaxY > cc.position.y && obbMaxY <= cc.position.y + cc.stepHeight)
+        {
+            cc.position.y  = obbMaxY;
+            cc.isGrounded  = true;
+            if (cc.velY < 0.0f) cc.velY = 0.0f;
+        }
+        else
+        {
+            cc.position.x += n.x * pen;
+            cc.position.z += n.z * pen;
+        }
+    }
+}
+
 void PhysicsWorld::Step(float /*dt*/)
 {
     for (auto& s : m_spheres)
