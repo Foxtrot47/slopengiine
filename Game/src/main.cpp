@@ -184,6 +184,15 @@ protected:
             // Character collision sphere — single sphere at bottom; that's all StepCharacter uses.
             XMFLOAT3 bottom = { m_cc.position.x, m_cc.position.y + m_cc.radius, m_cc.position.z };
             m_pipeline.DrawWireSphere(ctx, bottom, m_cc.radius, { 1.0f, 0.4f, 0.8f });
+            // Contact normal: magenta when grounded, dark when airborne.
+            {
+                XMFLOAT3 col = m_cc.isGrounded ? XMFLOAT3{ 1.0f, 0.0f, 1.0f }
+                                               : XMFLOAT3{ 0.25f, 0.0f, 0.25f };
+                XMFLOAT3 tip = { bottom.x + m_cc.contactNormal.x,
+                                 bottom.y + m_cc.contactNormal.y,
+                                 bottom.z + m_cc.contactNormal.z };
+                m_pipeline.DrawLine(ctx, bottom, tip, col);
+            }
         }
 
         if (m_rayHitValid)
@@ -214,6 +223,9 @@ private:
             ImGui::Text("  pos (%.1f, %.1f, %.1f)  vy=%.2f  %s",
                 m_cc.position.x, m_cc.position.y, m_cc.position.z,
                 m_cc.velY, m_cc.isGrounded ? "GROUNDED" : "air");
+            ImGui::Text("  contact n (%.2f, %.2f, %.2f)  pvxz (%.1f, %.1f)",
+                m_cc.contactNormal.x, m_cc.contactNormal.y, m_cc.contactNormal.z,
+                m_cc.physVelX, m_cc.physVelZ);
         }
         else
         {

@@ -112,6 +112,9 @@ bool PhysicsWorld::Raycast(const Ray& ray, RaycastHit& hit) const
 void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, float dt)
 {
     const float cosSlope = cosf(XMConvertToRadians(cc.slopeLimit));
+    // Contacts within this distance of the sphere surface register as touching
+    // even with zero penetration. Fixes isGrounded at rest (dist == radius exactly).
+    const float skin = 0.02f;
 
     // ---- Gravity ----
     bool wasGrounded = cc.isGrounded;
@@ -122,6 +125,7 @@ void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, floa
     XMFLOAT3 accNormal = { 0.0f, 0.0f, 0.0f };
 
     // Register any surface contact; accumulate normals for Jump() direction.
+    // Push (positional correction) is separate and only happens on actual penetration.
     auto addContact = [&](XMFLOAT3 n) {
         accNormal.x += n.x;
         accNormal.y += n.y;
@@ -141,14 +145,16 @@ void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, floa
     {
         XMFLOAT3 c    = bottomCenter();
         float    dist = Dot(c, sp.plane.normal) - sp.plane.d;
-        if (dist >= cc.radius) continue;
-        float pen = cc.radius - dist;
+        if (dist >= cc.radius + skin) continue;
         const XMFLOAT3& n = sp.plane.normal;
-        cc.position.x += n.x * pen;
-        cc.position.y += n.y * pen;
-        cc.position.z += n.z * pen;
         addContact(n);
         if (n.y > cosSlope && cc.velY < 0.0f) cc.velY = 0.0f;
+        if (dist < cc.radius) {
+            float pen = cc.radius - dist;
+            cc.position.x += n.x * pen;
+            cc.position.y += n.y * pen;
+            cc.position.z += n.z * pen;
+        }
     }
 
     for (const auto& so : m_staticOBBs)
@@ -167,14 +173,16 @@ void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, floa
         }
         XMFLOAT3 delta = Sub(c, closest);
         float     dist  = Len(delta);
-        if (dist >= cc.radius || dist < 1e-6f) continue;
+        if (dist >= cc.radius + skin || dist < 1e-6f) continue;
         XMFLOAT3 n = Scale(delta, 1.0f / dist);
-        float pen = cc.radius - dist;
-        cc.position.x += n.x * pen;
-        cc.position.y += n.y * pen;
-        cc.position.z += n.z * pen;
         addContact(n);
         if (n.y > cosSlope && cc.velY < 0.0f) cc.velY = 0.0f;
+        if (dist < cc.radius) {
+            float pen = cc.radius - dist;
+            cc.position.x += n.x * pen;
+            cc.position.y += n.y * pen;
+            cc.position.z += n.z * pen;
+        }
     }
 
     // ---- Horizontal pass ----
@@ -188,11 +196,13 @@ void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, floa
     {
         XMFLOAT3 c    = bottomCenter();
         float    dist = Dot(c, sp.plane.normal) - sp.plane.d;
-        if (dist >= cc.radius || sp.plane.normal.y > cosSlope) continue;
-        float pen = cc.radius - dist;
-        cc.position.x += sp.plane.normal.x * pen;
-        cc.position.z += sp.plane.normal.z * pen;
+        if (dist >= cc.radius + skin || sp.plane.normal.y > cosSlope) continue;
         addContact(sp.plane.normal);
+        if (dist < cc.radius) {
+            float pen = cc.radius - dist;
+            cc.position.x += sp.plane.normal.x * pen;
+            cc.position.z += sp.plane.normal.z * pen;
+        }
     }
 
     for (const auto& so : m_staticOBBs)
@@ -211,12 +221,10 @@ void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, floa
         }
         XMFLOAT3 delta = Sub(c, closest);
         float     dist  = Len(delta);
-        if (dist >= cc.radius || dist < 1e-6f) continue;
+        if (dist >= cc.radius + skin || dist < 1e-6f) continue;
         XMFLOAT3 n = Scale(delta, 1.0f / dist);
-        float pen = cc.radius - dist;
         if (n.y > cosSlope) continue; // floor — handled in vertical pass
 
-        // Step-up: if the obstacle top is within stepHeight above feet, ride over it.
         float obbMaxY = so.obb.center.y
             + fabsf(so.obb.axes[0].y) * so.obb.halfExtents.x
             + fabsf(so.obb.axes[1].y) * so.obb.halfExtents.y
@@ -224,14 +232,19 @@ void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, floa
 
         if (obbMaxY > cc.position.y && obbMaxY <= cc.position.y + cc.stepHeight)
         {
-            cc.position.y = obbMaxY;
-            if (cc.velY < 0.0f) cc.velY = 0.0f;
+            if (dist < cc.radius) {
+                cc.position.y = obbMaxY;
+                if (cc.velY < 0.0f) cc.velY = 0.0f;
+            }
             addContact({ 0.0f, 1.0f, 0.0f });
         }
         else
         {
-            cc.position.x += n.x * pen;
-            cc.position.z += n.z * pen;
+            if (dist < cc.radius) {
+                float pen = cc.radius - dist;
+                cc.position.x += n.x * pen;
+                cc.position.z += n.z * pen;
+            }
             addContact(n);
         }
     }
