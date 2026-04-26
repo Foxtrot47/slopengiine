@@ -340,6 +340,34 @@ void ForwardPipeline::DrawWireAABB(ID3D11DeviceContext* ctx,
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
+void ForwardPipeline::DrawWireBox(ID3D11DeviceContext* ctx,
+                                   DirectX::XMMATRIX world, DirectX::XMFLOAT3 color)
+{
+    using namespace DirectX;
+
+    MaterialParamsCBData mc = {};
+    mc.albedoTint = color; mc.roughnessScale = 1.0f; mc.unlit = 1.0f;
+    m_materialCB.Update(ctx, mc);
+    m_materialCB.BindPS(ctx, 3);
+
+    m_defaultWhite->BindPS(ctx, 0);
+    m_defaultWhite->BindPS(ctx, 1);
+    m_defaultNormal->BindPS(ctx, 2);
+
+    TransformCBData cb;
+    XMStoreFloat4x4(&cb.model,      world);
+    XMStoreFloat4x4(&cb.view,       m_view);
+    XMStoreFloat4x4(&cb.projection, m_proj);
+    m_transformCB.Update(ctx, cb);
+    m_transformCB.BindVS(ctx, 0);
+
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
+    m_wireAABBVB.Bind(ctx);
+    m_wireAABBIB.Bind(ctx);
+    ctx->DrawIndexed(m_wireAABBIB.GetCount(), 0, 0);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
+
 void ForwardPipeline::DrawLine(ID3D11DeviceContext* ctx,
                                DirectX::XMFLOAT3 from, DirectX::XMFLOAT3 to,
                                DirectX::XMFLOAT3 color)

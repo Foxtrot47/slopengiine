@@ -6,6 +6,7 @@
 #include "Engine/Assets/AssetManager.h"
 #include "Engine/Physics/Plane.h"
 #include "Engine/Physics/Ray.h"
+#include "Engine/Physics/OBB.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/TransformComponent.h"
 #include "Engine/Scene/Camera/CameraComponent.h"
@@ -53,6 +54,12 @@ public:
         m_physicsWorld.AddStaticPlane(
             SE::Plane::FromPointNormal({ 0.0f, m_floorY, 0.0f }, { 0.0f, 1.0f, 0.0f }),
             0.6f, 0.4f);
+
+        // Test OBBs for M35.
+        m_obbA = SE::OBB::FromAABB({ 2.0f, 0.0f, -2.0f }, { 6.0f, 4.0f, 2.0f });
+        m_obbB = SE::OBB::MakeRotatedY({ -5.0f, 2.0f, 3.0f }, { 3.0f, 2.0f, 1.0f }, 30.0f);
+        m_physicsWorld.AddStaticOBB(m_obbA, 0.5f, 0.4f);
+        m_physicsWorld.AddStaticOBB(m_obbB, 0.5f, 0.4f);
 
         SE_LOG_INFO("TestScene ready — Sponza (%u submeshes)", m_mesh->GetSubMeshCount());
         return true;
@@ -109,6 +116,8 @@ protected:
                                       { 0.0f, 1.0f, 0.2f });
             m_pipeline.DrawWireDisc(ctx, { 0.0f, m_floorY, 0.0f }, 20.0f,
                                     { 1.0f, 0.85f, 0.1f });
+            m_pipeline.DrawWireBox(ctx, m_obbA.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
+            m_pipeline.DrawWireBox(ctx, m_obbB.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
         }
 
         if (m_rayHitValid)
@@ -177,6 +186,8 @@ private:
                 m_physicsWorld.AddStaticPlane(
                     SE::Plane::FromPointNormal({ 0.0f, m_floorY, 0.0f }, { 0.0f, 1.0f, 0.0f }),
                     0.6f, 0.4f);
+                m_physicsWorld.AddStaticOBB(m_obbA, 0.5f, 0.4f);
+                m_physicsWorld.AddStaticOBB(m_obbB, 0.5f, 0.4f);
             }
             ImGui::Text("  pos (%.1f, %.1f, %.1f)",
                 m_ballTransform->position.x, m_ballTransform->position.y, m_ballTransform->position.z);
@@ -191,7 +202,9 @@ private:
                 ImGui::Spacing();
                 if (m_rayHitValid)
                 {
-                    const char* what = m_rayHit.transform ? "Ball" : "Floor";
+                    const char* what =
+                        m_rayHit.kind == SE::PhysicsWorld::RaycastHit::Kind::Sphere ? "Ball" :
+                        m_rayHit.kind == SE::PhysicsWorld::RaycastHit::Kind::OBB    ? "OBB"  : "Floor";
                     ImGui::Text("  Hit: %s  t=%.2f", what, m_rayHit.t);
                     ImGui::Text("  pos  (%.1f, %.1f, %.1f)",
                         m_rayHit.point.x,  m_rayHit.point.y,  m_rayHit.point.z);
@@ -311,6 +324,8 @@ private:
     XMFLOAT3                m_ballSpawn     = { 0.0f, 30.0f, 0.0f };
     float                   m_ballRadius    = 1.0f;
     float                   m_floorY        = 0.0f;
+    SE::OBB                 m_obbA;
+    SE::OBB                 m_obbB;
 
     bool                         m_showColliders = true;
     bool                         m_castRay       = false;
