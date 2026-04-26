@@ -4,11 +4,7 @@
 #include "Engine/Core/Engine.h"
 #include "Engine/Core/Logger.h"
 #include "Engine/Assets/AssetManager.h"
-#include "Engine/Physics/AABB.h"
-#include "Engine/Physics/Sphere.h"
-#include "Engine/Physics/Ray.h"
 #include "Engine/Physics/Plane.h"
-#include "Engine/Physics/Intersect.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/TransformComponent.h"
 #include "Engine/Scene/Camera/CameraComponent.h"
@@ -90,6 +86,14 @@ protected:
             { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic);
         m_pipeline.DrawMesh(ctx, *m_mesh, XMMatrixIdentity(), m_subMats);
         m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
+
+        if (m_showColliders)
+        {
+            m_pipeline.DrawWireSphere(ctx, m_ballTransform->position, m_ballRadius,
+                                      { 0.0f, 1.0f, 0.2f });
+            m_pipeline.DrawWireDisc(ctx, { 0.0f, m_floorY, 0.0f }, 20.0f,
+                                    { 1.0f, 0.85f, 0.1f });
+        }
     }
 
 private:
@@ -129,6 +133,7 @@ private:
         ImGui::Separator();
 
         ImGui::Text("Physics");
+        ImGui::Checkbox("Show Colliders", &m_showColliders);
         ImGui::DragFloat3("Spawn pos",    &m_ballSpawn.x,                   1.0f);
         ImGui::SliderFloat("Radius",      &m_ballRadius,                    0.1f, 10.0f);
         ImGui::Checkbox("Gravity",        &m_ballRigidBody->useGravity);
@@ -150,23 +155,6 @@ private:
         if (ImGui::Button("Reset"))     ResetBall();
         ImGui::SameLine();
         if (ImGui::Button("Launch up")) m_ballRigidBody->AddImpulse({ 0.0f, 20.0f, 0.0f });
-        ImGui::Separator();
-
-        ImGui::Text("Intersection tests");
-        ImGui::DragFloat3("Sphere A pos", &m_sphereA.center.x, 0.05f, -20.0f, 20.0f);
-        ImGui::DragFloat ("Sphere A r",   &m_sphereA.radius,   0.05f,  0.1f,   5.0f);
-        ImGui::DragFloat3("Sphere B pos", &m_sphereB.center.x, 0.05f, -20.0f, 20.0f);
-        ImGui::DragFloat ("Sphere B r",   &m_sphereB.radius,   0.05f,  0.1f,   5.0f);
-        ImGui::Text("  A ∩ B: %s", SE::Intersects(m_sphereA, m_sphereB) ? "OVERLAP" : "clear");
-        {
-            XMMATRIX vp    = XMMatrixMultiply(view, proj);
-            XMMATRIX invVP = XMMatrixInverse(nullptr, vp);
-            SE::Ray   ray  = SE::Ray::FromNDC(0.0f, 0.0f, invVP);
-            float     t    = 0.0f;
-            bool      hit  = SE::Intersects(ray, m_sponzaAABB, t);
-            ImGui::Text("  Crosshair->scene AABB: %s%s", hit ? "HIT  t=" : "miss",
-                        hit ? std::to_string(t).c_str() : "");
-        }
         ImGui::Separator();
 
         ImGui::Text("Lighting");
@@ -276,9 +264,7 @@ private:
     float                   m_ballRadius    = 1.0f;
     float                   m_floorY        = 0.0f;
 
-    SE::AABB   m_sponzaAABB = SE::AABB::FromCenterExtents({ 0,4,0 }, { 14.0f, 4.0f, 5.0f });
-    SE::Sphere m_sphereA    = { { -2.0f, 2.0f, 0.0f }, 1.0f };
-    SE::Sphere m_sphereB    = { {  2.0f, 2.0f, 0.0f }, 1.0f };
+    bool m_showColliders = true;
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)

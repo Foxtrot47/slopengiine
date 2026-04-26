@@ -35,7 +35,7 @@ cbuffer PointLightCB : register(b2)
 cbuffer MaterialCB : register(b3)
 {
     float3 AlbedoTint;     float  RoughnessScale;
-    float  Metallic;       float3 _mat_pad;
+    float  Metallic;       float  Unlit;  float2 _mat_pad;
 };
 
 Texture2D    g_albedo    : register(t0);
@@ -79,6 +79,9 @@ PSIn VS_Main(VSIn input)
 
 float4 PS_Main(PSIn input) : SV_TARGET
 {
+    if (Unlit > 0.5f)
+        return float4(AlbedoTint, 1.0f);
+
     // Reconstruct TBN and transform normal map sample to world space
     float3 tbn_n  = g_normal.Sample(g_sampler, input.TexCoord).rgb * 2.0f - 1.0f;
     float3x3 TBN  = float3x3(normalize(input.T), normalize(input.B), normalize(input.N));
