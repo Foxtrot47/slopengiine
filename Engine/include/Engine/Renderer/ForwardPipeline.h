@@ -49,6 +49,9 @@ public:
     // Circle in the XZ plane at center.y — useful for visualizing infinite horizontal planes.
     void DrawWireDisc(ID3D11DeviceContext* ctx,
                       DirectX::XMFLOAT3 center, float radius, DirectX::XMFLOAT3 color);
+    // Single world-space line segment. Uploads 2 vertices via Map/Unmap each call.
+    void DrawLine(ID3D11DeviceContext* ctx,
+                  DirectX::XMFLOAT3 from, DirectX::XMFLOAT3 to, DirectX::XMFLOAT3 color);
 
 private:
     struct TransformCBData
@@ -66,6 +69,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vs;
     Microsoft::WRL::ComPtr<ID3D11PixelShader>  m_ps;
     Microsoft::WRL::ComPtr<ID3D11InputLayout>  m_layout;
+    Microsoft::WRL::ComPtr<ID3D11Buffer>       m_lineBuffer; // dynamic, 2 verts
 
     ConstantBuffer<TransformCBData>      m_transformCB;
     ConstantBuffer<MaterialParamsCBData> m_materialCB;

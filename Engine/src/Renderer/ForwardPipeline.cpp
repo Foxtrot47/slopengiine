@@ -155,6 +155,15 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets)
         m_wireAABBIB.Create(device, idx.data(), static_cast<uint32_t>(idx.size()));
     }
 
+    {
+        D3D11_BUFFER_DESC bd  = {};
+        bd.Usage              = D3D11_USAGE_DYNAMIC;
+        bd.ByteWidth          = sizeof(MeshVertex) * 2;
+        bd.BindFlags          = D3D11_BIND_VERTEX_BUFFER;
+        bd.CPUAccessFlags     = D3D11_CPU_ACCESS_WRITE;
+        SE_HR(device->CreateBuffer(&bd, nullptr, &m_lineBuffer));
+    }
+
     m_defaultWhite  = assets.GetDefaultWhite();
     m_defaultNormal = assets.GetDefaultNormal();
     return true;
@@ -328,6 +337,45 @@ void ForwardPipeline::DrawWireAABB(ID3D11DeviceContext* ctx,
     m_wireAABBVB.Bind(ctx);
     m_wireAABBIB.Bind(ctx);
     ctx->DrawIndexed(m_wireAABBIB.GetCount(), 0, 0);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
+
+void ForwardPipeline::DrawLine(ID3D11DeviceContext* ctx,
+                               DirectX::XMFLOAT3 from, DirectX::XMFLOAT3 to,
+                               DirectX::XMFLOAT3 color)
+{
+    using namespace DirectX;
+
+    MaterialParamsCBData mc = {};
+    mc.albedoTint = color; mc.roughnessScale = 1.0f; mc.unlit = 1.0f;
+    m_materialCB.Update(ctx, mc);
+    m_materialCB.BindPS(ctx, 3);
+
+    m_defaultWhite->BindPS(ctx, 0);
+    m_defaultWhite->BindPS(ctx, 1);
+    m_defaultNormal->BindPS(ctx, 2);
+
+    // Identity model — vertices are supplied in world space.
+    TransformCBData cb;
+    XMStoreFloat4x4(&cb.model,      XMMatrixIdentity());
+    XMStoreFloat4x4(&cb.view,       m_view);
+    XMStoreFloat4x4(&cb.projection, m_proj);
+    m_transformCB.Update(ctx, cb);
+    m_transformCB.BindVS(ctx, 0);
+
+    MeshVertex verts[2] = {};
+    verts[0].x = from.x; verts[0].y = from.y; verts[0].z = from.z;
+    verts[1].x = to.x;   verts[1].y = to.y;   verts[1].z = to.z;
+
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    SE_HR(ctx->Map(m_lineBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+    memcpy(mapped.pData, verts, sizeof(verts));
+    ctx->Unmap(m_lineBuffer.Get(), 0);
+
+    UINT stride = sizeof(MeshVertex), offset = 0;
+    ctx->IASetVertexBuffers(0, 1, m_lineBuffer.GetAddressOf(), &stride, &offset);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
+    ctx->Draw(2, 0);
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 

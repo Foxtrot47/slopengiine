@@ -5,6 +5,7 @@
 #include "Engine/Core/Logger.h"
 #include "Engine/Assets/AssetManager.h"
 #include "Engine/Physics/Plane.h"
+#include "Engine/Physics/Ray.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/TransformComponent.h"
 #include "Engine/Scene/Camera/CameraComponent.h"
@@ -87,12 +88,37 @@ protected:
         m_pipeline.DrawMesh(ctx, *m_mesh, XMMatrixIdentity(), m_subMats);
         m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
 
+        if (m_castRay)
+        {
+            SE::Ray ray;
+            XMVECTOR eye = XMLoadFloat3(&m_camera->eye);
+            XMVECTOR dir = XMVector3Normalize(
+                XMVectorSubtract(XMLoadFloat3(&m_camera->target), eye));
+            XMStoreFloat3(&ray.origin,    eye);
+            XMStoreFloat3(&ray.direction, dir);
+            m_rayHitValid = m_physicsWorld.Raycast(ray, m_rayHit);
+        }
+        else
+        {
+            m_rayHitValid = false;
+        }
+
         if (m_showColliders)
         {
             m_pipeline.DrawWireSphere(ctx, m_ballTransform->position, m_ballRadius,
                                       { 0.0f, 1.0f, 0.2f });
             m_pipeline.DrawWireDisc(ctx, { 0.0f, m_floorY, 0.0f }, 20.0f,
                                     { 1.0f, 0.85f, 0.1f });
+        }
+
+        if (m_rayHitValid)
+        {
+            m_pipeline.DrawWireSphere(ctx, m_rayHit.point, 0.15f, { 1.0f, 1.0f, 1.0f });
+            m_pipeline.DrawLine(ctx, m_rayHit.point,
+                { m_rayHit.point.x + m_rayHit.normal.x,
+                  m_rayHit.point.y + m_rayHit.normal.y,
+                  m_rayHit.point.z + m_rayHit.normal.z },
+                { 1.0f, 1.0f, 0.0f });
         }
     }
 
@@ -132,30 +158,52 @@ private:
         ImGui::SliderFloat("Metallic",        &m_metallic,       0.0f, 1.0f);
         ImGui::Separator();
 
-        ImGui::Text("Physics");
-        ImGui::Checkbox("Show Colliders", &m_showColliders);
-        ImGui::DragFloat3("Spawn pos",    &m_ballSpawn.x,                   1.0f);
-        ImGui::SliderFloat("Radius",      &m_ballRadius,                    0.1f, 10.0f);
-        ImGui::Checkbox("Gravity",        &m_ballRigidBody->useGravity);
-        ImGui::SliderFloat("Mass",        &m_ballRigidBody->mass,           0.1f, 10.0f);
-        ImGui::SliderFloat("Restitution", &m_ballRigidBody->restitution,    0.0f, 1.0f);
-        ImGui::SliderFloat("Friction",    &m_ballRigidBody->friction,       0.0f, 1.0f);
-        if (ImGui::SliderFloat("Floor Y", &m_floorY, -50.0f, 50.0f))
+        if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            m_physicsWorld.Clear();
-            m_physicsWorld.AddSphere(m_ballTransform, m_ballRigidBody, m_ballRadius);
-            m_physicsWorld.AddStaticPlane(
-                SE::Plane::FromPointNormal({ 0.0f, m_floorY, 0.0f }, { 0.0f, 1.0f, 0.0f }),
-                0.6f, 0.4f);
+            ImGui::Checkbox("Show Colliders", &m_showColliders);
+            ImGui::SameLine();
+            ImGui::Checkbox("Raycast", &m_castRay);
+
+            ImGui::DragFloat3("Spawn pos",    &m_ballSpawn.x,                1.0f);
+            ImGui::SliderFloat("Radius",      &m_ballRadius,                 0.1f, 10.0f);
+            ImGui::Checkbox("Gravity",        &m_ballRigidBody->useGravity);
+            ImGui::SliderFloat("Mass",        &m_ballRigidBody->mass,        0.1f, 10.0f);
+            ImGui::SliderFloat("Restitution", &m_ballRigidBody->restitution, 0.0f, 1.0f);
+            ImGui::SliderFloat("Friction",    &m_ballRigidBody->friction,    0.0f, 1.0f);
+            if (ImGui::SliderFloat("Floor Y", &m_floorY, -50.0f, 50.0f))
+            {
+                m_physicsWorld.Clear();
+                m_physicsWorld.AddSphere(m_ballTransform, m_ballRigidBody, m_ballRadius);
+                m_physicsWorld.AddStaticPlane(
+                    SE::Plane::FromPointNormal({ 0.0f, m_floorY, 0.0f }, { 0.0f, 1.0f, 0.0f }),
+                    0.6f, 0.4f);
+            }
+            ImGui::Text("  pos (%.1f, %.1f, %.1f)",
+                m_ballTransform->position.x, m_ballTransform->position.y, m_ballTransform->position.z);
+            ImGui::Text("  vel (%.2f, %.2f, %.2f)",
+                m_ballRigidBody->velocity.x, m_ballRigidBody->velocity.y, m_ballRigidBody->velocity.z);
+            if (ImGui::Button("Reset"))     ResetBall();
+            ImGui::SameLine();
+            if (ImGui::Button("Launch up")) m_ballRigidBody->AddImpulse({ 0.0f, 20.0f, 0.0f });
+
+            if (m_castRay)
+            {
+                ImGui::Spacing();
+                if (m_rayHitValid)
+                {
+                    const char* what = m_rayHit.transform ? "Ball" : "Floor";
+                    ImGui::Text("  Hit: %s  t=%.2f", what, m_rayHit.t);
+                    ImGui::Text("  pos  (%.1f, %.1f, %.1f)",
+                        m_rayHit.point.x,  m_rayHit.point.y,  m_rayHit.point.z);
+                    ImGui::Text("  norm (%.2f, %.2f, %.2f)",
+                        m_rayHit.normal.x, m_rayHit.normal.y, m_rayHit.normal.z);
+                }
+                else
+                {
+                    ImGui::TextDisabled("  no hit");
+                }
+            }
         }
-        ImGui::Text("  pos (%.1f, %.1f, %.1f)",
-            m_ballTransform->position.x, m_ballTransform->position.y, m_ballTransform->position.z);
-        ImGui::Text("  vel (%.2f, %.2f, %.2f)",
-            m_ballRigidBody->velocity.x, m_ballRigidBody->velocity.y, m_ballRigidBody->velocity.z);
-        if (ImGui::Button("Reset"))     ResetBall();
-        ImGui::SameLine();
-        if (ImGui::Button("Launch up")) m_ballRigidBody->AddImpulse({ 0.0f, 20.0f, 0.0f });
-        ImGui::Separator();
 
         ImGui::Text("Lighting");
         ImGui::SliderFloat("Elevation",    &m_lights.elevDeg,  -90.0f, 90.0f,  "%.1f deg");
@@ -264,7 +312,10 @@ private:
     float                   m_ballRadius    = 1.0f;
     float                   m_floorY        = 0.0f;
 
-    bool m_showColliders = true;
+    bool                         m_showColliders = true;
+    bool                         m_castRay       = false;
+    SE::PhysicsWorld::RaycastHit m_rayHit        = {};
+    bool                         m_rayHitValid   = false;
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)

@@ -170,7 +170,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M32 | ~~Rigidbody component; linear dynamics (integrate velocity/position)~~ ✓ |
 | M33 | ~~Collision response; impulse resolution, restitution, friction~~ ✓ |
 | M33b | ~~Debug collider visualization — `ForwardPipeline::DrawWireSphere` / `DrawWireAABB`~~ ✓ |
-| M34 | Raycasting against scene colliders |
+| M34 | ~~Raycasting against scene colliders~~ ✓ |
 | M35 | OBB narrowphase + SAT |
 | M36 | Simple character controller (capsule + step-up + slope limit) |
 
@@ -271,3 +271,9 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 - Do NOT add an `AABB` overload to `DrawWireAABB` — Renderer must not include Physics headers. Pass `aabb.min, aabb.max` at call site.
 - Scene draws: green wire sphere = ball collider, yellow disc (r=20) = floor plane collider. `m_sponzaAABB` is a test volume for intersection tests, NOT a physics collider — don't confuse the two.
 - Toggle via `m_showColliders` bool in TestScene; checkbox in the Physics panel.
+
+### Raycasting (M34)
+- `PhysicsWorld::Raycast(ray, hit)` iterates registered spheres and planes, returns the closest hit.
+- `RaycastHit`: `t`, `point`, `normal`, `TransformComponent* transform` (nullptr = static plane).
+- `ForwardPipeline::DrawLine` uses a `D3D11_USAGE_DYNAMIC` 2-vertex buffer updated via `Map/Unmap` each call. Vertices are in world space; model CB is identity.
+- Test scene casts from NDC (0,0) — camera center crosshair — each frame. Hit is shown as white wire sphere + yellow normal line when `m_showColliders` is on.
