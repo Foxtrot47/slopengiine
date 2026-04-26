@@ -52,9 +52,9 @@ public:
         m_ballTransform->scale     = m_ballRadius;
         ResetBall();
         m_physicsWorld.AddSphere(m_ballTransform, m_ballRigidBody, m_ballRadius);
-        m_physicsWorld.AddStaticPlane(
-            SE::Plane::FromPointNormal({ 0.0f, m_floorY, 0.0f }, { 0.0f, 1.0f, 0.0f }),
-            0.6f, 0.4f);
+        m_obbFloor = SE::OBB::FromAABB({ -30.0f, m_floorY - 0.5f, -30.0f },
+                                        {  30.0f, m_floorY,        30.0f });
+        m_physicsWorld.AddStaticOBB(m_obbFloor, 0.6f, 0.4f);
 
         // Test OBBs for M35/M36.
         m_obbA = SE::OBB::FromAABB({ 2.0f, 0.0f, -2.0f }, { 6.0f, 4.0f, 2.0f });
@@ -97,7 +97,7 @@ protected:
             mode     == SE::CameraController::Mode::FPS)
         {
             m_cc.position = { m_camera->eye.x,
-                              m_camera->eye.y - m_cc.eyeHeight,
+                              m_floorY + 2.0f,
                               m_camera->eye.z };
             m_cc.velY = 0.0f;
         }
@@ -176,8 +176,7 @@ protected:
         {
             m_pipeline.DrawWireSphere(ctx, m_ballTransform->position, m_ballRadius,
                                       { 0.0f, 1.0f, 0.2f });
-            m_pipeline.DrawWireDisc(ctx, { 0.0f, m_floorY, 0.0f }, 20.0f,
-                                    { 1.0f, 0.85f, 0.1f });
+            m_pipeline.DrawWireBox(ctx, m_obbFloor.GetWorldMatrix(), { 1.0f, 0.85f, 0.1f });
             m_pipeline.DrawWireBox(ctx, m_obbA.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
             m_pipeline.DrawWireBox(ctx, m_obbB.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
             m_pipeline.DrawWireBox(ctx, m_obbC.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
@@ -258,9 +257,9 @@ private:
             {
                 m_physicsWorld.Clear();
                 m_physicsWorld.AddSphere(m_ballTransform, m_ballRigidBody, m_ballRadius);
-                m_physicsWorld.AddStaticPlane(
-                    SE::Plane::FromPointNormal({ 0.0f, m_floorY, 0.0f }, { 0.0f, 1.0f, 0.0f }),
-                    0.6f, 0.4f);
+                m_obbFloor = SE::OBB::FromAABB({ -30.0f, m_floorY - 0.5f, -30.0f },
+                                                {  30.0f, m_floorY,        30.0f });
+                m_physicsWorld.AddStaticOBB(m_obbFloor, 0.6f, 0.4f);
                 m_physicsWorld.AddStaticOBB(m_obbA, 0.5f, 0.4f);
                 m_physicsWorld.AddStaticOBB(m_obbB, 0.5f, 0.4f);
                 m_physicsWorld.AddStaticOBB(m_obbC, 0.5f, 0.4f);
@@ -400,6 +399,7 @@ private:
     XMFLOAT3                m_ballSpawn     = { 0.0f, 30.0f, 0.0f };
     float                   m_ballRadius    = 1.0f;
     float                   m_floorY        = 0.0f;
+    SE::OBB                 m_obbFloor;
     SE::OBB                 m_obbA;
     SE::OBB                 m_obbB;
     SE::OBB                 m_obbC; // low step for step-up test
