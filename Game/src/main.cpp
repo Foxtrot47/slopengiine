@@ -182,14 +182,9 @@ protected:
             m_pipeline.DrawWireBox(ctx, m_obbB.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
             m_pipeline.DrawWireBox(ctx, m_obbC.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
 
-            // Character capsule bottom+top cap markers.
-            if (m_camCtrl.GetMode() == SE::CameraController::Mode::Orbit)
-            {
-                XMFLOAT3 bottom = { m_cc.position.x, m_cc.position.y + m_cc.radius, m_cc.position.z };
-                XMFLOAT3 top    = { m_cc.position.x, m_cc.position.y + m_cc.height - m_cc.radius, m_cc.position.z };
-                m_pipeline.DrawWireSphere(ctx, bottom, m_cc.radius, { 1.0f, 0.4f, 0.8f });
-                m_pipeline.DrawWireSphere(ctx, top,    m_cc.radius, { 1.0f, 0.4f, 0.8f });
-            }
+            // Character collision sphere — single sphere at bottom; that's all StepCharacter uses.
+            XMFLOAT3 bottom = { m_cc.position.x, m_cc.position.y + m_cc.radius, m_cc.position.z };
+            m_pipeline.DrawWireSphere(ctx, bottom, m_cc.radius, { 1.0f, 0.4f, 0.8f });
         }
 
         if (m_rayHitValid)
