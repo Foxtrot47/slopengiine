@@ -133,56 +133,70 @@ void PhysicsWorld::StepCharacter(CharacterController& cc, XMFLOAT3 wishVel, floa
         cc.isGrounded = true;
     };
 
-    // ---- Vertical pass ----
-    cc.position.y += cc.velY * dt;
-
-    // Bottom sphere center is at feet + radius.
+    // ---- Vertical pass (sub-stepped to prevent tunneling) ----
+    // Each sub-step moves at most 0.8*radius so the sphere never skips
+    // past a surface. At normal speeds this is 1 iteration; fast falls
+    // add up to 8. Beyond that (extreme edge case) there can still be
+    // tunneling, but it requires velocities unreachable in normal play.
     auto bottomCenter = [&]() -> XMFLOAT3 {
         return { cc.position.x, cc.position.y + cc.radius, cc.position.z };
     };
 
-    for (const auto& sp : m_planes)
-    {
-        XMFLOAT3 c    = bottomCenter();
-        float    dist = Dot(c, sp.plane.normal) - sp.plane.d;
-        if (dist >= cc.radius + skin) continue;
-        const XMFLOAT3& n = sp.plane.normal;
-        addContact(n);
-        if (n.y > cosSlope && cc.velY < 0.0f) cc.velY = 0.0f;
-        if (dist < cc.radius) {
-            float pen = cc.radius - dist;
-            cc.position.x += n.x * pen;
-            cc.position.y += n.y * pen;
-            cc.position.z += n.z * pen;
-        }
-    }
+    const float safeStep = cc.radius * 0.8f;
+    int   substeps = static_cast<int>(ceilf(fabsf(cc.velY * dt) / safeStep));
+    if (substeps < 1) substeps = 1;
+    if (substeps > 8) substeps = 8;
+    float subDt = dt / substeps;
 
-    for (const auto& so : m_staticOBBs)
+    for (int s = 0; s < substeps; ++s)
     {
-        XMFLOAT3 c = bottomCenter();
-        XMFLOAT3 d = Sub(c, so.obb.center);
-        XMFLOAT3 closest = so.obb.center;
-        for (int i = 0; i < 3; ++i)
+        cc.position.y += cc.velY * subDt;
+
+        for (const auto& sp : m_planes)
         {
-            float proj = Dot(d, so.obb.axes[i]);
-            float he   = (&so.obb.halfExtents.x)[i];
-            float p    = proj < -he ? -he : (proj > he ? he : proj);
-            closest.x += p * so.obb.axes[i].x;
-            closest.y += p * so.obb.axes[i].y;
-            closest.z += p * so.obb.axes[i].z;
+            XMFLOAT3 c    = bottomCenter();
+            float    dist = Dot(c, sp.plane.normal) - sp.plane.d;
+            if (dist >= cc.radius + skin) continue;
+            const XMFLOAT3& n = sp.plane.normal;
+            addContact(n);
+            if (n.y > cosSlope && cc.velY < 0.0f) cc.velY = 0.0f;
+            if (dist < cc.radius) {
+                float pen = cc.radius - dist;
+                cc.position.x += n.x * pen;
+                cc.position.y += n.y * pen;
+                cc.position.z += n.z * pen;
+            }
         }
-        XMFLOAT3 delta = Sub(c, closest);
-        float     dist  = Len(delta);
-        if (dist >= cc.radius + skin || dist < 1e-6f) continue;
-        XMFLOAT3 n = Scale(delta, 1.0f / dist);
-        addContact(n);
-        if (n.y > cosSlope && cc.velY < 0.0f) cc.velY = 0.0f;
-        if (dist < cc.radius) {
-            float pen = cc.radius - dist;
-            cc.position.x += n.x * pen;
-            cc.position.y += n.y * pen;
-            cc.position.z += n.z * pen;
+
+        for (const auto& so : m_staticOBBs)
+        {
+            XMFLOAT3 c = bottomCenter();
+            XMFLOAT3 d = Sub(c, so.obb.center);
+            XMFLOAT3 closest = so.obb.center;
+            for (int i = 0; i < 3; ++i)
+            {
+                float proj = Dot(d, so.obb.axes[i]);
+                float he   = (&so.obb.halfExtents.x)[i];
+                float p    = proj < -he ? -he : (proj > he ? he : proj);
+                closest.x += p * so.obb.axes[i].x;
+                closest.y += p * so.obb.axes[i].y;
+                closest.z += p * so.obb.axes[i].z;
+            }
+            XMFLOAT3 delta = Sub(c, closest);
+            float     dist  = Len(delta);
+            if (dist >= cc.radius + skin || dist < 1e-6f) continue;
+            XMFLOAT3 n = Scale(delta, 1.0f / dist);
+            addContact(n);
+            if (n.y > cosSlope && cc.velY < 0.0f) cc.velY = 0.0f;
+            if (dist < cc.radius) {
+                float pen = cc.radius - dist;
+                cc.position.x += n.x * pen;
+                cc.position.y += n.y * pen;
+                cc.position.z += n.z * pen;
+            }
         }
+
+        if (cc.velY == 0.0f) break; // grounded mid-step, no need to continue
     }
 
     // ---- Horizontal pass ----
