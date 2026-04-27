@@ -16,6 +16,7 @@
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Renderer/LightEnvironment.h"
 #include "Engine/Renderer/ForwardPipeline.h"
+#include "Engine/Renderer/SkyboxRenderer.h"
 #include "Engine/Input/GamepadState.h"
 
 using namespace DirectX;
@@ -26,6 +27,10 @@ public:
     bool Setup()
     {
         ID3D11Device* device = GetRenderer().GetDevice();
+
+        if (!m_skybox.Init(device)) return false;
+        if (!m_skybox.LoadPanorama(device,
+                L"Assets/Textures/citrus_orchard_road_puresky_2k.exr")) return false;
 
         if (!m_lights.Init(device))                return false;
         if (!m_pipeline.Init(device, GetAssets())) return false;
@@ -149,6 +154,8 @@ protected:
         XMMATRIX proj = m_camera->GetProjectionMatrix(aspect);
 
         DrawUI(view, proj);
+
+        m_skybox.Draw(ctx, view, proj);
 
         m_lights.BindPS(ctx, m_camera->eye);
         m_pipeline.Begin(ctx, view, proj);
@@ -392,6 +399,7 @@ private:
         }
     }
 
+    SE::SkyboxRenderer                       m_skybox;
     SE::LightEnvironment                     m_lights;
     SE::ForwardPipeline                      m_pipeline;
     SE::AssetHandle<SE::Mesh>                m_mesh;

@@ -8,6 +8,7 @@ target_include_directories(FoxEngine
 )
 
 find_package(imgui CONFIG REQUIRED)
+find_package(tinyexr CONFIG REQUIRED)
 
 target_link_libraries(FoxEngine PUBLIC
     d3d11.lib
@@ -16,6 +17,7 @@ target_link_libraries(FoxEngine PUBLIC
     dxguid.lib
     assimp::assimp
     imgui::imgui
+    unofficial::tinyexr::tinyexr
 )
 
 target_compile_definitions(FoxEngine PUBLIC
