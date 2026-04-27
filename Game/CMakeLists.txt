@@ -35,11 +35,3 @@ add_custom_command(TARGET Game POST_BUILD
         "$<TARGET_FILE_DIR:Game>/Assets"
     COMMENT "Copying Assets"
 )
-
-# vcpkg DLLs (assimp etc.) — copy debug and release variants as appropriate.
-add_custom_command(TARGET Game POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/vcpkg_installed/x64-windows/$<IF:$<CONFIG:Debug>,debug/bin,bin>"
-        "$<TARGET_FILE_DIR:Game>"
-    COMMENT "Copying vcpkg runtime DLLs"
-)
