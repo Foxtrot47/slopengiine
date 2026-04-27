@@ -10,9 +10,9 @@ class Material
 {
 public:
     bool Create(ID3D11Device* device);
-    bool LoadAlbedo(ID3D11Device* device, const wchar_t* path);
-    bool LoadRoughness(ID3D11Device* device, const wchar_t* path);
-    bool LoadNormal(ID3D11Device* device, const wchar_t* path);
+    bool LoadAlbedo(ID3D11Device* device, ID3D11DeviceContext* ctx, const wchar_t* path);
+    bool LoadRoughness(ID3D11Device* device, ID3D11DeviceContext* ctx, const wchar_t* path);
+    bool LoadNormal(ID3D11Device* device, ID3D11DeviceContext* ctx, const wchar_t* path);
 
     // Binds albedo(t0), roughness(t1), normal(t2), MaterialCB(b3)
     void Bind(ID3D11DeviceContext* ctx);

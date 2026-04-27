@@ -3,9 +3,10 @@
 
 namespace SE {
 
-void AssetManager::Init(ID3D11Device* device)
+void AssetManager::Init(ID3D11Device* device, ID3D11DeviceContext* ctx)
 {
-    m_device = device;
+    m_device  = device;
+    m_context = ctx;
     SE_LOG_INFO("AssetManager initialised");
 }
 
@@ -33,7 +34,7 @@ AssetHandle<Texture2D> AssetManager::GetTexture(const std::wstring& path)
         if (auto h = it->second.lock()) return h;
 
     auto tex = std::make_shared<Texture2D>();
-    if (!tex->LoadFromFile(m_device, path.c_str()))
+    if (!tex->LoadFromFile(m_device, m_context, path.c_str()))
     {
         SE_LOG_ERROR("AssetManager: failed to load texture");
         return nullptr;
@@ -48,7 +49,7 @@ AssetHandle<Texture2D> AssetManager::GetDefaultWhite()
     if (auto h = m_defaultWhite.lock()) return h;
     auto tex = std::make_shared<Texture2D>();
     uint8_t px[4] = { 255, 255, 255, 255 };
-    tex->CreateFromMemory(m_device, px, 1, 1);
+    tex->CreateFromMemory(m_device, m_context, px, 1, 1);
     m_defaultWhite = tex;
     return tex;
 }
@@ -58,7 +59,7 @@ AssetHandle<Texture2D> AssetManager::GetDefaultNormal()
     if (auto h = m_defaultNormal.lock()) return h;
     auto tex = std::make_shared<Texture2D>();
     uint8_t px[4] = { 128, 128, 255, 255 };
-    tex->CreateFromMemory(m_device, px, 1, 1);
+    tex->CreateFromMemory(m_device, m_context, px, 1, 1);
     m_defaultNormal = tex;
     return tex;
 }

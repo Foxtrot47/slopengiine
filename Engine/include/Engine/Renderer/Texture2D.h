@@ -10,11 +10,11 @@ namespace SE {
 class Texture2D
 {
 public:
-    // Load a PNG / JPG / BMP / TIFF from disk via WIC.
-    bool LoadFromFile(ID3D11Device* device, const wchar_t* path);
+    // Load a PNG / JPG / BMP / TIFF from disk via WIC. Generates a full mip chain.
+    bool LoadFromFile(ID3D11Device* device, ID3D11DeviceContext* ctx, const wchar_t* path);
 
-    // Create directly from a raw RGBA8 pixel buffer (useful for procedural textures).
-    bool CreateFromMemory(ID3D11Device* device,
+    // Create directly from a raw RGBA8 pixel buffer. Generates a full mip chain.
+    bool CreateFromMemory(ID3D11Device* device, ID3D11DeviceContext* ctx,
                           const uint8_t* rgba, uint32_t width, uint32_t height);
 
     // Bind the SRV to the pixel shader.
@@ -25,7 +25,7 @@ public:
     bool     IsValid()   const { return m_srv != nullptr; }
 
 private:
-    bool CreateSRV(ID3D11Device* device,
+    bool CreateSRV(ID3D11Device* device, ID3D11DeviceContext* ctx,
                    const uint8_t* rgba, uint32_t width, uint32_t height);
 
     ComPtr<ID3D11Texture2D>          m_texture;

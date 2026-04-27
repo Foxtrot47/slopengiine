@@ -14,7 +14,7 @@ using AssetHandle = std::shared_ptr<T>;
 class AssetManager
 {
 public:
-    void Init(ID3D11Device* device);
+    void Init(ID3D11Device* device, ID3D11DeviceContext* ctx);
 
     // Returns a shared handle to the asset; loads on first request, returns
     // the cached instance on subsequent calls while any handle is alive.
@@ -30,7 +30,8 @@ public:
     uint32_t CachedTextureCount() const;
 
 private:
-    ID3D11Device* m_device = nullptr;
+    ID3D11Device*        m_device  = nullptr;
+    ID3D11DeviceContext* m_context = nullptr;
     std::unordered_map<std::string,  std::weak_ptr<Mesh>>     m_meshes;
     std::unordered_map<std::wstring, std::weak_ptr<Texture2D>> m_textures;
     std::weak_ptr<Texture2D> m_defaultWhite;

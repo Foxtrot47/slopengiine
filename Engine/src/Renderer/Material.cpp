@@ -7,19 +7,19 @@ bool Material::Create(ID3D11Device* device)
     return m_cb.Create(device);
 }
 
-bool Material::LoadAlbedo(ID3D11Device* device, const wchar_t* path)
+bool Material::LoadAlbedo(ID3D11Device* device, ID3D11DeviceContext* ctx, const wchar_t* path)
 {
-    return m_albedo.LoadFromFile(device, path);
+    return m_albedo.LoadFromFile(device, ctx, path);
 }
 
-bool Material::LoadRoughness(ID3D11Device* device, const wchar_t* path)
+bool Material::LoadRoughness(ID3D11Device* device, ID3D11DeviceContext* ctx, const wchar_t* path)
 {
-    return m_roughness.LoadFromFile(device, path);
+    return m_roughness.LoadFromFile(device, ctx, path);
 }
 
-bool Material::LoadNormal(ID3D11Device* device, const wchar_t* path)
+bool Material::LoadNormal(ID3D11Device* device, ID3D11DeviceContext* ctx, const wchar_t* path)
 {
-    return m_normal.LoadFromFile(device, path);
+    return m_normal.LoadFromFile(device, ctx, path);
 }
 
 void Material::Bind(ID3D11DeviceContext* ctx)
