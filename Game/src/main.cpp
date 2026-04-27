@@ -28,7 +28,7 @@ public:
     {
         ID3D11Device* device = GetRenderer().GetDevice();
 
-        if (!m_skybox.Init(device)) return false;
+        if (!m_skybox.Init(device, GetRenderer().GetStateCache())) return false;
         if (!m_skybox.LoadPanorama(device,
                 L"Assets/Textures/citrus_orchard_road_puresky_2k.exr")) return false;
 

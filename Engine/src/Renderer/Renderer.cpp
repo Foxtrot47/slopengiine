@@ -59,13 +59,14 @@ bool Renderer::Initialize(HWND hwnd, uint32_t width, uint32_t height)
         return false;
     }
 
-    // Depth stencil state — Z-test on, write enabled
+    m_stateCache.Init(m_device.Get());
+
+    // Scene depth state — Z-test LESS, full write, no stencil
     D3D11_DEPTH_STENCIL_DESC dsDesc = {};
-    dsDesc.DepthEnable              = TRUE;
-    dsDesc.DepthWriteMask           = D3D11_DEPTH_WRITE_MASK_ALL;
-    dsDesc.DepthFunc                = D3D11_COMPARISON_LESS;
-    dsDesc.StencilEnable            = FALSE;
-    SE_HR(m_device->CreateDepthStencilState(&dsDesc, &m_depthState));
+    dsDesc.DepthEnable    = TRUE;
+    dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    dsDesc.DepthFunc      = D3D11_COMPARISON_LESS;
+    m_sceneDepthState = m_stateCache.GetDepthStencilState(dsDesc);
 
     // Verify MSAA support (4x is required by all D3D11 hardware for common formats)
     UINT msaaQuality = 0;
@@ -160,7 +161,8 @@ void Renderer::Resize(uint32_t width, uint32_t height)
 void Renderer::Shutdown()
 {
     ReleaseSurfaces();
-    m_depthState.Reset();
+    m_sceneDepthState = nullptr;
+    m_stateCache.Clear();
     m_swapChain.Reset();
     m_context.Reset();
     m_device.Reset();
@@ -174,7 +176,7 @@ void Renderer::BeginFrame(float r, float g, float b, float a)
     m_context->ClearDepthStencilView(m_msaaDsv.Get(),
         D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
     m_context->OMSetRenderTargets(1, m_msaaRtv.GetAddressOf(), m_msaaDsv.Get());
-    m_context->OMSetDepthStencilState(m_depthState.Get(), 0);
+    m_context->OMSetDepthStencilState(m_sceneDepthState, 0);
 }
 
 void Renderer::EndFrame()

@@ -4,6 +4,7 @@
 #include <dxgi.h>
 #include <wrl/client.h>
 #include <cstdint>
+#include "Engine/Renderer/RenderStateCache.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -26,6 +27,7 @@ public:
 
     ID3D11Device*        GetDevice()  const { return m_device.Get(); }
     ID3D11DeviceContext* GetContext() const { return m_context.Get(); }
+    RenderStateCache&    GetStateCache()    { return m_stateCache; }
 
 private:
     static constexpr UINT k_msaaSamples = 4;
@@ -33,21 +35,22 @@ private:
     void CreateSurfaces(uint32_t width, uint32_t height);
     void ReleaseSurfaces();
 
-    ComPtr<ID3D11Device>            m_device;
-    ComPtr<ID3D11DeviceContext>     m_context;
-    ComPtr<IDXGISwapChain>          m_swapChain;
+    ComPtr<ID3D11Device>           m_device;
+    ComPtr<ID3D11DeviceContext>    m_context;
+    ComPtr<IDXGISwapChain>         m_swapChain;
 
     // Swap chain back buffer — resolve destination only, never bound as scene RTV
-    ComPtr<ID3D11Texture2D>         m_backBuffer;
-    ComPtr<ID3D11RenderTargetView>  m_rtv;
+    ComPtr<ID3D11Texture2D>        m_backBuffer;
+    ComPtr<ID3D11RenderTargetView> m_rtv;
 
     // MSAA offscreen surface — scene + UI render here each frame
-    ComPtr<ID3D11Texture2D>         m_msaaColor;
-    ComPtr<ID3D11RenderTargetView>  m_msaaRtv;
-    ComPtr<ID3D11Texture2D>         m_msaaDepth;
-    ComPtr<ID3D11DepthStencilView>  m_msaaDsv;
+    ComPtr<ID3D11Texture2D>        m_msaaColor;
+    ComPtr<ID3D11RenderTargetView> m_msaaRtv;
+    ComPtr<ID3D11Texture2D>        m_msaaDepth;
+    ComPtr<ID3D11DepthStencilView> m_msaaDsv;
 
-    ComPtr<ID3D11DepthStencilState> m_depthState;
+    RenderStateCache       m_stateCache;
+    ID3D11DepthStencilState* m_sceneDepthState = nullptr; // non-owning; owned by m_stateCache
 };
 
 } // namespace SE

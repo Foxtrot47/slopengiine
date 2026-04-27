@@ -7,7 +7,7 @@
 
 namespace SE {
 
-bool SkyboxRenderer::Init(ID3D11Device* device)
+bool SkyboxRenderer::Init(ID3D11Device* device, RenderStateCache& cache)
 {
     Microsoft::WRL::ComPtr<ID3DBlob> vsBlob, psBlob, errBlob;
     UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
@@ -58,19 +58,19 @@ bool SkyboxRenderer::Init(ID3D11Device* device)
     if (!m_cubeVB.Create(device, cubeVerts, sizeof(cubeVerts), sizeof(DirectX::XMFLOAT3))) return false;
     if (!m_cubeIB.Create(device, cubeInds, 36)) return false;
 
-    // Depth: test LESS_EQUAL (sky forced to NDC z=1), no write (don't clobber scene depth)
+    // Depth: LESS_EQUAL (sky at NDC z=1 passes cleared buffer), no write
     D3D11_DEPTH_STENCIL_DESC dsDesc = {};
     dsDesc.DepthEnable    = TRUE;
     dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
     dsDesc.DepthFunc      = D3D11_COMPARISON_LESS_EQUAL;
-    SE_HR(device->CreateDepthStencilState(&dsDesc, &m_depthState));
+    m_depthState = cache.GetDepthStencilState(dsDesc);
 
-    // CULL_NONE — we're viewing the cube from inside so standard winding is backwards
+    // CULL_NONE — camera is inside the cube so standard winding is backwards
     D3D11_RASTERIZER_DESC rsDesc = {};
     rsDesc.FillMode        = D3D11_FILL_SOLID;
     rsDesc.CullMode        = D3D11_CULL_NONE;
     rsDesc.DepthClipEnable = TRUE;
-    SE_HR(device->CreateRasterizerState(&rsDesc, &m_rsState));
+    m_rsState = cache.GetRasterizerState(rsDesc);
 
     // Bilinear: wrap U (longitude), clamp V (avoid seam at poles)
     D3D11_SAMPLER_DESC sd = {};
@@ -148,8 +148,8 @@ void SkyboxRenderer::Draw(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, Dire
     m_cb.Update(ctx, cb);
     m_cb.BindVS(ctx, 0);
 
-    ctx->OMSetDepthStencilState(m_depthState.Get(), 0);
-    ctx->RSSetState(m_rsState.Get());
+    ctx->OMSetDepthStencilState(m_depthState, 0);
+    ctx->RSSetState(m_rsState);
     ctx->VSSetShader(m_vs.Get(), nullptr, 0);
     ctx->PSSetShader(m_ps.Get(), nullptr, 0);
     ctx->IASetInputLayout(m_layout.Get());
