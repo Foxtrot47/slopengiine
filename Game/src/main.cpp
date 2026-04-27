@@ -216,110 +216,120 @@ protected:
 private:
     void DrawUI(XMMATRIX view, XMMATRIX proj)
     {
-        ImGui::Begin("Scene");
-        ImGui::Text("%.1f fps  |  %.2f ms",
-                    GetClock().GetFPS(), GetClock().GetDeltaTime() * 1000.0f);
-        ImGui::Separator();
+        // HUD — FPS + asset stats rendered directly on screen (no window chrome)
+        {
+            ImDrawList* dl = ImGui::GetForegroundDrawList();
+            char buf[128];
+            sprintf_s(buf, "%.1f fps  |  %.2f ms",
+                GetClock().GetFPS(), GetClock().GetDeltaTime() * 1000.0f);
+            dl->AddText(ImVec2(10.0f, 10.0f), IM_COL32(255, 255, 255, 220), buf);
+            sprintf_s(buf, "meshes:%u  textures:%u  submeshes:%u",
+                GetAssets().CachedMeshCount(), GetAssets().CachedTextureCount(),
+                m_mesh ? m_mesh->GetSubMeshCount() : 0u);
+            dl->AddText(ImVec2(10.0f, 26.0f), IM_COL32(200, 200, 200, 180), buf);
+        }
 
-        ImGui::Text("Camera  [Tab to switch]");
+        // --- Camera ---
+        ImGui::Begin("Camera");
+        ImGui::Text("[Tab] to switch mode");
         if (m_camCtrl.GetMode() == SE::CameraController::Mode::FPS)
         {
-            ImGui::Text("  FPS — WASD move, RMB look, Space jump");
-            ImGui::SliderFloat("Move Speed", &m_cc.moveSpeed,  1.0f, 20.0f);
-            ImGui::SliderFloat("Jump Speed", &m_cc.jumpSpeed,  2.0f, 20.0f);
-            ImGui::Text("  pos (%.1f, %.1f, %.1f)  vy=%.2f  %s",
+            ImGui::Text("FPS — WASD move  RMB look  Space jump");
+            ImGui::SliderFloat("Move Speed", &m_cc.moveSpeed, 1.0f, 20.0f);
+            ImGui::SliderFloat("Jump Speed", &m_cc.jumpSpeed, 2.0f, 20.0f);
+            ImGui::Text("pos (%.1f, %.1f, %.1f)  vy=%.2f  %s",
                 m_cc.position.x, m_cc.position.y, m_cc.position.z,
                 m_cc.velY, m_cc.isGrounded ? "GROUNDED" : "air");
-            ImGui::Text("  contact n (%.2f, %.2f, %.2f)  pvxz (%.1f, %.1f)",
+            ImGui::Text("contact n (%.2f, %.2f, %.2f)  pvxz (%.1f, %.1f)",
                 m_cc.contactNormal.x, m_cc.contactNormal.y, m_cc.contactNormal.z,
                 m_cc.physVelX, m_cc.physVelZ);
         }
         else
         {
-            ImGui::Text("  Orbit — LMB drag, wheel zoom");
+            ImGui::Text("Orbit — LMB drag  wheel zoom");
             ImGui::DragFloat3("Target",    &m_camCtrl.orbit.target.x,  0.1f);
             ImGui::SliderFloat("Distance", &m_camCtrl.orbit.distance,  1.0f, 500.0f);
         }
         ImGui::SliderFloat("Far Z", &m_camera->farZ, 100.0f, 20000.0f, "%.0f");
-        ImGui::Text("  Eye (%.1f, %.1f, %.1f)",
+        ImGui::Text("Eye (%.1f, %.1f, %.1f)",
             m_camera->eye.x, m_camera->eye.y, m_camera->eye.z);
-        ImGui::Separator();
+        ImGui::End();
 
-        ImGui::Text("Assets  meshes:%u  textures:%u",
-            GetAssets().CachedMeshCount(), GetAssets().CachedTextureCount());
-        ImGui::Text("Submeshes: %u", m_mesh ? m_mesh->GetSubMeshCount() : 0);
-        ImGui::Separator();
-
-        ImGui::Text("Material (global)");
+        // --- Material ---
+        ImGui::Begin("Material");
         ImGui::ColorEdit3("Albedo Tint",      m_matTint);
         ImGui::SliderFloat("Roughness Scale", &m_roughnessScale, 0.0f, 2.0f);
         ImGui::SliderFloat("Metallic",        &m_metallic,       0.0f, 1.0f);
-        ImGui::Separator();
+        ImGui::End();
 
-        if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen))
+        // --- Physics ---
+        ImGui::Begin("Physics");
+        ImGui::Checkbox("Show Colliders", &m_showColliders);
+        ImGui::SameLine();
+        ImGui::Checkbox("Raycast", &m_castRay);
+        if (ImGui::Checkbox("Gravity", &m_gravityEnabled))
         {
-            ImGui::Checkbox("Show Colliders", &m_showColliders);
-            ImGui::SameLine();
-            ImGui::Checkbox("Raycast", &m_castRay);
-
-            if (ImGui::Checkbox("Gravity", &m_gravityEnabled))
+            m_ballRigidBody->useGravity = m_gravityEnabled;
+            m_cc.gravityEnabled         = m_gravityEnabled;
+        }
+        ImGui::Separator();
+        ImGui::Text("Ball");
+        ImGui::DragFloat3("Spawn pos",    &m_ballSpawn.x,                1.0f);
+        ImGui::SliderFloat("Radius",      &m_ballRadius,                 0.1f, 10.0f);
+        ImGui::SliderFloat("Mass",        &m_ballRigidBody->mass,        0.1f, 10.0f);
+        ImGui::SliderFloat("Restitution", &m_ballRigidBody->restitution, 0.0f, 1.0f);
+        ImGui::SliderFloat("Friction",    &m_ballRigidBody->friction,    0.0f, 1.0f);
+        if (ImGui::SliderFloat("Floor Y", &m_floorY, -50.0f, 50.0f))
+        {
+            m_physicsWorld.Clear();
+            m_physicsWorld.AddSphere(m_ballTransform, m_ballRigidBody, m_ballRadius);
+            m_obbFloor = SE::OBB::FromAABB({ -30.0f, m_floorY - 0.5f, -30.0f },
+                                            {  30.0f, m_floorY,        30.0f });
+            m_physicsWorld.AddStaticOBB(m_obbFloor, 0.6f, 0.4f);
+            m_physicsWorld.AddStaticOBB(m_obbA, 0.5f, 0.4f);
+            m_physicsWorld.AddStaticOBB(m_obbB, 0.5f, 0.4f);
+            m_physicsWorld.AddStaticOBB(m_obbC, 0.5f, 0.4f);
+        }
+        ImGui::Text("pos (%.1f, %.1f, %.1f)",
+            m_ballTransform->position.x, m_ballTransform->position.y, m_ballTransform->position.z);
+        ImGui::Text("vel (%.2f, %.2f, %.2f)",
+            m_ballRigidBody->velocity.x, m_ballRigidBody->velocity.y, m_ballRigidBody->velocity.z);
+        if (ImGui::Button("Reset"))     ResetBall();
+        ImGui::SameLine();
+        if (ImGui::Button("Launch up")) m_ballRigidBody->AddImpulse({ 0.0f, 20.0f, 0.0f });
+        if (m_castRay)
+        {
+            ImGui::Separator();
+            ImGui::Text("Raycast");
+            if (m_rayHitValid)
             {
-                m_ballRigidBody->useGravity = m_gravityEnabled;
-                m_cc.gravityEnabled         = m_gravityEnabled;
+                const char* what =
+                    m_rayHit.kind == SE::PhysicsWorld::RaycastHit::Kind::Sphere ? "Ball" :
+                    m_rayHit.kind == SE::PhysicsWorld::RaycastHit::Kind::OBB    ? "OBB"  : "Floor";
+                ImGui::Text("Hit: %s  t=%.2f", what, m_rayHit.t);
+                ImGui::Text("pos  (%.1f, %.1f, %.1f)",
+                    m_rayHit.point.x,  m_rayHit.point.y,  m_rayHit.point.z);
+                ImGui::Text("norm (%.2f, %.2f, %.2f)",
+                    m_rayHit.normal.x, m_rayHit.normal.y, m_rayHit.normal.z);
             }
-            ImGui::DragFloat3("Spawn pos",    &m_ballSpawn.x,                1.0f);
-            ImGui::SliderFloat("Radius",      &m_ballRadius,                 0.1f, 10.0f);
-            ImGui::SliderFloat("Mass",        &m_ballRigidBody->mass,        0.1f, 10.0f);
-            ImGui::SliderFloat("Restitution", &m_ballRigidBody->restitution, 0.0f, 1.0f);
-            ImGui::SliderFloat("Friction",    &m_ballRigidBody->friction,    0.0f, 1.0f);
-            if (ImGui::SliderFloat("Floor Y", &m_floorY, -50.0f, 50.0f))
+            else
             {
-                m_physicsWorld.Clear();
-                m_physicsWorld.AddSphere(m_ballTransform, m_ballRigidBody, m_ballRadius);
-                m_obbFloor = SE::OBB::FromAABB({ -30.0f, m_floorY - 0.5f, -30.0f },
-                                                {  30.0f, m_floorY,        30.0f });
-                m_physicsWorld.AddStaticOBB(m_obbFloor, 0.6f, 0.4f);
-                m_physicsWorld.AddStaticOBB(m_obbA, 0.5f, 0.4f);
-                m_physicsWorld.AddStaticOBB(m_obbB, 0.5f, 0.4f);
-                m_physicsWorld.AddStaticOBB(m_obbC, 0.5f, 0.4f);
-            }
-            ImGui::Text("  pos (%.1f, %.1f, %.1f)",
-                m_ballTransform->position.x, m_ballTransform->position.y, m_ballTransform->position.z);
-            ImGui::Text("  vel (%.2f, %.2f, %.2f)",
-                m_ballRigidBody->velocity.x, m_ballRigidBody->velocity.y, m_ballRigidBody->velocity.z);
-            if (ImGui::Button("Reset"))     ResetBall();
-            ImGui::SameLine();
-            if (ImGui::Button("Launch up")) m_ballRigidBody->AddImpulse({ 0.0f, 20.0f, 0.0f });
-
-            if (m_castRay)
-            {
-                ImGui::Spacing();
-                if (m_rayHitValid)
-                {
-                    const char* what =
-                        m_rayHit.kind == SE::PhysicsWorld::RaycastHit::Kind::Sphere ? "Ball" :
-                        m_rayHit.kind == SE::PhysicsWorld::RaycastHit::Kind::OBB    ? "OBB"  : "Floor";
-                    ImGui::Text("  Hit: %s  t=%.2f", what, m_rayHit.t);
-                    ImGui::Text("  pos  (%.1f, %.1f, %.1f)",
-                        m_rayHit.point.x,  m_rayHit.point.y,  m_rayHit.point.z);
-                    ImGui::Text("  norm (%.2f, %.2f, %.2f)",
-                        m_rayHit.normal.x, m_rayHit.normal.y, m_rayHit.normal.z);
-                }
-                else
-                {
-                    ImGui::TextDisabled("  no hit");
-                }
+                ImGui::TextDisabled("no hit");
             }
         }
+        ImGui::End();
 
-        ImGui::Text("Lighting");
+        // --- Lighting ---
+        ImGui::Begin("Lighting");
+        ImGui::Text("Sun");
         ImGui::SliderFloat("Elevation",    &m_lights.elevDeg,  -90.0f, 90.0f,  "%.1f deg");
         ImGui::SliderFloat("Azimuth",      &m_lights.azimDeg, -180.0f, 180.0f, "%.1f deg");
         ImGui::ColorEdit3("Light Color",   m_lights.lightColor);
         ImGui::ColorEdit3("Ambient Color", m_lights.ambientColor);
         ImGui::SliderFloat("Shininess",    &m_lights.shininess, 1.0f, 256.0f, "%.0f");
         ImGui::Separator();
-        ImGui::SliderInt("Active point lights", &m_lights.numLights, 0, 8);
+        ImGui::Text("Point Lights");
+        ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
         for (int i = 0; i < m_lights.numLights; ++i)
         {
             ImGui::PushID(i);
@@ -333,14 +343,23 @@ private:
             }
             ImGui::PopID();
         }
-        ImGui::Separator();
+        ImGui::End();
 
+        // --- Input ---
+        ImGui::Begin("Input");
         const SE::GamepadState& gp = GetInput().GetGamepad(0);
         if (gp.connected)
-            ImGui::Text("Pad0  L(%.2f,%.2f) R(%.2f,%.2f) LT:%.2f RT:%.2f",
-                gp.leftX, gp.leftY, gp.rightX, gp.rightY, gp.leftTrigger, gp.rightTrigger);
+        {
+            ImGui::Text("Controller 0  connected");
+            ImGui::Separator();
+            ImGui::Text("Left  stick  (%.2f, %.2f)", gp.leftX,  gp.leftY);
+            ImGui::Text("Right stick  (%.2f, %.2f)", gp.rightX, gp.rightY);
+            ImGui::Text("LT  %.2f   RT  %.2f",       gp.leftTrigger, gp.rightTrigger);
+        }
         else
-            ImGui::TextDisabled("Pad0  not connected");
+        {
+            ImGui::TextDisabled("Controller 0  not connected");
+        }
         ImGui::End();
 
         // Viewport light indicators
