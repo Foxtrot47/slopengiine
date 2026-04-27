@@ -178,67 +178,68 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 
 | # | Milestone |
 |---|---|
-| M37 | Render state cache (blend, rasterizer, depth-stencil state objects) |
-| M38 | Shader permutation system (preprocessor define variants) |
-| M39 | Render queue; front-to-back opaque, back-to-front transparent |
-| M40 | Frustum culling (AABB vs 6 planes) |
-| M41 | Shadow map (directional; CSM-ready depth pass) |
-| M42 | PCF soft shadows |
-| M43 | Render-to-texture; fullscreen quad pass infrastructure |
-| M44 | FXAA |
-| M45 | Deferred shading (G-buffer: albedo, normal, depth, material) |
-| M46 | SSAO |
-| M47 | HDR + tone mapping (Reinhard + ACES) |
-| M48 | Bloom (dual Kawase blur) |
-| M49 | Skybox (cube map) |
-| M50 | IBL — diffuse irradiance + specular (split-sum) |
+| M37 | ~~Mip mapping (auto-generate mipmaps at load; MIP_LINEAR sampler)~~ ✓ |
+| M38 | MSAA 4× (swap chain + MSAA render target; resolve to back buffer) |
+| M39 | Skybox (cube map texture, inverted cube, depth write off) |
+| M40 | Render state cache (blend, rasterizer, depth-stencil state objects) |
+| M41 | Shader permutation system (preprocessor define variants) |
+| M42 | Render queue; front-to-back opaque, back-to-front transparent |
+| M43 | Frustum culling (AABB vs 6 planes) |
+| M44 | Shadow map (directional; CSM-ready depth pass) |
+| M45 | PCF soft shadows |
+| M46 | Render-to-texture; fullscreen quad pass infrastructure |
+| M47 | Deferred shading (G-buffer: albedo, normal, depth, material) |
+| M48 | SSAO |
+| M49 | HDR + tone mapping (Reinhard + ACES) |
+| M50 | Bloom (dual Kawase blur) |
+| M51 | IBL — diffuse irradiance + specular (split-sum) |
 
 ### Phase 9 — Animation
 
 | # | Milestone |
 |---|---|
-| M51 | Skeleton data (bone hierarchy, bind pose, inverse bind) |
-| M52 | Animation clip (keyframes: position, rotation, scale per bone) |
-| M53 | Clip sampling + linear interpolation (lerp pos, slerp rot) |
-| M54 | Skinned mesh renderer (GPU skinning via VS + bone cbuffer) |
-| M55 | Animation state machine (states, transitions, conditions) |
-| M56 | Blend tree (1D blend, 2D directional blend) |
-| M57 | Root motion extraction |
-| M58 | Animation events (callbacks at keyframe timestamps) |
-| M59 | Import from glTF 2.0 (cgltf; replaces OBJ for complex assets) |
+| M52 | Skeleton data (bone hierarchy, bind pose, inverse bind) |
+| M53 | Animation clip (keyframes: position, rotation, scale per bone) |
+| M54 | Clip sampling + linear interpolation (lerp pos, slerp rot) |
+| M55 | Skinned mesh renderer (GPU skinning via VS + bone cbuffer) |
+| M56 | Animation state machine (states, transitions, conditions) |
+| M57 | Blend tree (1D blend, 2D directional blend) |
+| M58 | Root motion extraction |
+| M59 | Animation events (callbacks at keyframe timestamps) |
+| M60 | Import from glTF 2.0 (cgltf; replaces OBJ for complex assets) |
 
 ### Phase 10 — Engine Tooling & Profiling
 
 | # | Milestone |
 |---|---|
-| M60 | ImGui integration; debug overlay, stat counters |
-| M61 | GPU timestamp queries; per-pass frame timing |
-| M62 | CPU profiler (hierarchical timers, `SE_PROFILE_SCOPE`) |
-| M63 | In-engine console (ImGui; log viewer, command dispatch) |
-| M64 | Hot-reload for HLSL shaders (watch file, recompile on change) |
+| M61 | ImGui integration; debug overlay, stat counters |
+| M62 | GPU timestamp queries; per-pass frame timing |
+| M63 | CPU profiler (hierarchical timers, `SE_PROFILE_SCOPE`) |
+| M64 | In-engine console (ImGui; log viewer, command dispatch) |
+| M65 | Hot-reload for HLSL shaders (watch file, recompile on change) |
 
 ### Phase 11 — Scripting
 
 | # | Milestone |
 |---|---|
-| M65 | Lua runtime (sol2 binding) embedded in engine |
-| M66 | Expose Entity/Component API to Lua |
-| M67 | Script component; per-entity Lua update callbacks |
-| M68 | Lua-accessible input, audio, physics APIs |
+| M66 | Lua runtime (sol2 binding) embedded in engine |
+| M67 | Expose Entity/Component API to Lua |
+| M68 | Script component; per-entity Lua update callbacks |
+| M69 | Lua-accessible input, audio, physics APIs |
 
 ### Phase 12 — Editor (when engine is stable post-Phase 10)
 
 | # | Milestone |
 |---|---|
-| M69 | Editor shell — separate executable, links FoxEngine.lib, hosts an engine instance |
-| M70 | Viewport panel (render engine scene into an ImGui image) |
-| M71 | Entity hierarchy panel + component inspector |
-| M72 | Asset browser (file tree, drag-to-scene) |
-| M73 | Transform gizmos (ImGuizmo; translate, rotate, scale) |
-| M74 | Scene serialization/deserialization (JSON via nlohmann/json) |
-| M75 | Play/pause/stop in-editor (clone scene state, run physics+scripts) |
-| M76 | Undo/redo stack (command pattern) |
-| M77 | Custom renderer for editor primitives (grid, wireframe, selection highlight) |
+| M70 | Editor shell — separate executable, links FoxEngine.lib, hosts an engine instance |
+| M71 | Viewport panel (render engine scene into an ImGui image) |
+| M72 | Entity hierarchy panel + component inspector |
+| M73 | Asset browser (file tree, drag-to-scene) |
+| M74 | Transform gizmos (ImGuizmo; translate, rotate, scale) |
+| M75 | Scene serialization/deserialization (JSON via nlohmann/json) |
+| M76 | Play/pause/stop in-editor (clone scene state, run physics+scripts) |
+| M77 | Undo/redo stack (command pattern) |
+| M78 | Custom renderer for editor primitives (grid, wireframe, selection highlight) |
 
 ---
 
@@ -260,7 +261,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 
 ### Renderer architecture (post-refactor)
 - `Renderer` = D3D11 device / swap chain / surface management only.
-- `ForwardPipeline` = shading strategy: owns VS/PS (`Shaders/Basic.hlsl`), input layout, TransformCB (b0), MaterialCB (b3), sampler, and all debug geometry buffers. Shadow pre-pass will feed *into* ForwardPipeline, not sit alongside it. `DeferredPipeline` is the future genuine sibling (M45).
+- `ForwardPipeline` = shading strategy: owns VS/PS (`Shaders/Basic.hlsl`), input layout, TransformCB (b0), MaterialCB (b3), sampler, and all debug geometry buffers. Shadow pre-pass will feed *into* ForwardPipeline, not sit alongside it. `DeferredPipeline` is the future genuine sibling (M47).
 - `LightEnvironment` = directional + point light state only (`Init`, `BindPS`). No ImGui. Game code reads public fields directly for debug controls.
 - `CameraController` = single class with nested `OrbitState`/`FPSState`; `UpdateOrbit`/`UpdateFPS` are private methods. Tab switches modes.
 
@@ -285,6 +286,14 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 - `Intersects(OBB, Sphere)`: closest-point test; clamp sphere centre projection onto each axis.
 - `PhysicsWorld::ResolveSphereVsOBB`: closest-point penetration, normal impulse + friction, same pattern as ResolveSphereVsPlane.
 - `ForwardPipeline::DrawWireBox(ctx, XMMATRIX world, color)`: reuses `m_wireAABBVB/IB` (unit cube) with provided OBB world matrix. Call site passes `obb.GetWorldMatrix()`.
+
+### Mip mapping (M37)
+- `Texture2D::CreateSRV` creates with `MipLevels=0` (full chain), `D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE`, `D3D11_RESOURCE_MISC_GENERATE_MIPS`, `D3D11_USAGE_DEFAULT`.
+- Uploads mip 0 via `ctx->UpdateSubresource`, then calls `ctx->GenerateMips(srv)`.
+- `SrvDesc.Texture2D.MipLevels = (UINT)-1` exposes all generated levels to the shader.
+- `AssetManager::Init` now takes `(device, context)` — context stored as `m_context`, threaded through all texture load paths.
+- Sampler was already `Anisotropic` with `MaxLOD = FLT_MAX` — no sampler changes needed.
+- 1×1 default textures (white, normal) go through the same path; `GenerateMips` on a 1×1 is a no-op.
 
 ### Character controller (M36)
 - `CharacterController` struct: `position` = feet (bottom of capsule). `radius`, `height`, `eyeHeight`, `stepHeight`, `slopeLimit`, `jumpSpeed`, `gravAccel`, `moveSpeed`, `gravityEnabled`.
