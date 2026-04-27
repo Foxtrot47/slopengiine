@@ -181,7 +181,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M37 | ~~Mip mapping (auto-generate mipmaps at load; MIP_LINEAR sampler)~~ ✓ |
 | M38 | ~~MSAA 4× (swap chain + MSAA render target; resolve to back buffer)~~ ✓ |
 | M39 | ~~Skybox (equirectangular HDR panorama; unit cube, depth write off, LESS_EQUAL)~~ ✓ |
-| M40 | Render state cache (blend, rasterizer, depth-stencil state objects) |
+| M40 | ~~Render state cache (blend, rasterizer, depth-stencil state objects)~~ ✓ |
 | M41 | Shader permutation system (preprocessor define variants) |
 | M42 | Render queue; front-to-back opaque, back-to-front transparent |
 | M43 | Frustum culling (AABB vs 6 planes) |
@@ -286,6 +286,14 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 - `Intersects(OBB, Sphere)`: closest-point test; clamp sphere centre projection onto each axis.
 - `PhysicsWorld::ResolveSphereVsOBB`: closest-point penetration, normal impulse + friction, same pattern as ResolveSphereVsPlane.
 - `ForwardPipeline::DrawWireBox(ctx, XMMATRIX world, color)`: reuses `m_wireAABBVB/IB` (unit cube) with provided OBB world matrix. Call site passes `obb.GetWorldMatrix()`.
+
+### Render state cache (M40)
+- `RenderStateCache` in `Engine/Renderer/RenderStateCache.h/.cpp`. Owned as a value member of `Renderer`; exposed via `Renderer::GetStateCache()`.
+- Three `std::vector<std::pair<Desc, ComPtr<State>>>` — one each for rasterizer, depth-stencil, blend. Linear scan + `memcmp` for lookup (total state count is tiny, ~5).
+- Callers must zero-init (`= {}`) the desc struct before filling fields; `memcmp` over uninitialized padding bytes would produce false misses.
+- Returns raw non-owning `ID3D11XxxState*`; cache owns the lifetime via ComPtr.
+- `Renderer::Initialize` calls `m_stateCache.Init(device)`, stores `m_sceneDepthState` (raw ptr) for use in `BeginFrame`. `Renderer::Shutdown` calls `m_stateCache.Clear()` before releasing the device.
+- `SkyboxRenderer::Init` now takes `RenderStateCache&`; its two state objects (`LESS_EQUAL`+no-write DS, `CULL_NONE` RS) come from the cache instead of direct `CreateXxx` calls. Members are raw ptrs instead of ComPtrs.
 
 ### Mip mapping (M37)
 - `Texture2D::CreateSRV` creates with `MipLevels=0` (full chain), `D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE`, `D3D11_RESOURCE_MISC_GENERATE_MIPS`, `D3D11_USAGE_DEFAULT`.
