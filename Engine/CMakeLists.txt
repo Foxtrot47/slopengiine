@@ -1,3 +1,5 @@
+option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+
 file(GLOB_RECURSE ENGINE_SOURCES "src/*.cpp")
 
 add_library(SlopEngine STATIC ${ENGINE_SOURCES})
@@ -7,6 +9,7 @@ target_include_directories(SlopEngine
     PRIVATE src
 )
 
+find_package(assimp CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(tinyexr CONFIG REQUIRED)
 
