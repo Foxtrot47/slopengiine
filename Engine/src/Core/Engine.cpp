@@ -67,8 +67,9 @@ void Engine::Run()
         m_renderer.BeginFrame(0.1f, 0.15f, 0.25f);
         m_imgui.BeginFrame();
         OnUpdate();
+        OnPostProcess();
         m_imgui.EndFrame();
-        m_renderer.EndFrame();
+        m_renderer.Present();
 
         fpsTimer += m_clock.GetDeltaTime();
         if (fpsTimer >= 1.0f)

@@ -19,8 +19,21 @@ public:
     // Clears colour + depth on the MSAA surface, binds it. Call at the start of each frame.
     void BeginFrame(float r, float g, float b, float a = 1.0f);
 
-    // Resolves MSAA → back buffer, then presents. Call at the end of each frame.
+    // Resolves MSAA → back buffer, then presents. Convenience for no-post-process path.
     void EndFrame();
+
+    // Resolve MSAA colour surface to the 1× back buffer and bind it as the current RTV.
+    void ResolveToBackBuffer();
+
+    // Resolve MSAA colour surface into a non-MSAA target texture (e.g. RenderTarget).
+    void ResolveScene(ID3D11Texture2D* dest,
+                      DXGI_FORMAT fmt = DXGI_FORMAT_R8G8B8A8_UNORM);
+
+    // Bind the swap chain back-buffer RTV (no depth). Used for final fullscreen blit.
+    void BindBackBuffer(ID3D11DeviceContext* ctx);
+
+    // Just present the swap chain. Call after post-process + ImGui have drawn to back buffer.
+    void Present();
 
     // Rebuild swap chain buffers and MSAA surfaces after a window resize.
     void Resize(uint32_t width, uint32_t height);

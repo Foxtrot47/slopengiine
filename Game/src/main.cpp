@@ -19,6 +19,8 @@
 #include "Engine/Renderer/ForwardPipeline.h"
 #include "Engine/Renderer/SkyboxRenderer.h"
 #include "Engine/Renderer/ShadowMap.h"
+#include "Engine/Renderer/RenderTarget.h"
+#include "Engine/Renderer/FullscreenQuad.h"
 #include "Engine/Input/GamepadState.h"
 
 using namespace DirectX;
@@ -74,6 +76,12 @@ public:
 
         // Character controller starts at eye level above scene centre.
         m_cc.position = { 0.0f, 5.0f, 0.0f };
+
+        // Post-process infrastructure (M46)
+        if (!m_sceneRT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight()))
+            return false;
+        if (!m_fsQuad.Init(device, GetShaders()))
+            return false;
 
         if (m_mesh)
         {
@@ -239,6 +247,32 @@ protected:
         }
     }
 
+    void OnPostProcess() override
+    {
+        auto* ctx = GetRenderer().GetContext();
+
+        // Recreate RT if window was resized
+        uint32_t w = GetWindow().GetWidth(), h = GetWindow().GetHeight();
+        if (m_sceneRT.GetWidth() != w || m_sceneRT.GetHeight() != h)
+        {
+            m_sceneRT.Shutdown();
+            m_sceneRT.Init(GetRenderer().GetDevice(), w, h);
+        }
+
+        if (m_postProcess)
+        {
+            GetRenderer().ResolveScene(m_sceneRT.GetTexture());
+            GetRenderer().BindBackBuffer(ctx);
+            m_sceneRT.BindPS(ctx, 0);
+            m_fsQuad.Draw(ctx);
+            m_sceneRT.UnbindPS(ctx, 0);
+        }
+        else
+        {
+            GetRenderer().ResolveToBackBuffer();
+        }
+    }
+
 private:
     void DrawUI(XMMATRIX view, XMMATRIX proj)
     {
@@ -356,6 +390,7 @@ private:
         ImGui::Separator();
         ImGui::Text("Shadow Debug");
         ImGui::Checkbox("Show Shadow Factor", &m_debugShadow);
+        ImGui::Checkbox("Post-Process Blit", &m_postProcess);
         ImGui::Separator();
         ImGui::Text("Point Lights");
         ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
@@ -478,6 +513,9 @@ private:
     bool                         m_showColliders     = true;
     bool                         m_castRay           = false;
     bool                         m_debugShadow       = false;
+    bool                         m_postProcess       = true;
+    SE::RenderTarget             m_sceneRT;
+    SE::FullscreenQuad           m_fsQuad;
     SE::PhysicsWorld::RaycastHit m_rayHit        = {};
     bool                         m_rayHitValid   = false;
 };

@@ -181,11 +181,40 @@ void Renderer::BeginFrame(float r, float g, float b, float a)
 
 void Renderer::EndFrame()
 {
-    // Resolve MSAA colour surface into the 1× back buffer, then present
+    ResolveToBackBuffer();
+    Present();
+}
+
+void Renderer::ResolveToBackBuffer()
+{
     m_context->ResolveSubresource(
         m_backBuffer.Get(), 0,
         m_msaaColor.Get(),  0,
         DXGI_FORMAT_R8G8B8A8_UNORM);
+    BindBackBuffer(m_context.Get());
+}
+
+void Renderer::ResolveScene(ID3D11Texture2D* dest, DXGI_FORMAT fmt)
+{
+    m_context->ResolveSubresource(dest, 0, m_msaaColor.Get(), 0, fmt);
+}
+
+void Renderer::BindBackBuffer(ID3D11DeviceContext* ctx)
+{
+    ID3D11RenderTargetView* rtv = m_rtv.Get();
+    ctx->OMSetRenderTargets(1, &rtv, nullptr);
+
+    D3D11_TEXTURE2D_DESC desc;
+    m_backBuffer->GetDesc(&desc);
+    D3D11_VIEWPORT vp = {};
+    vp.Width    = static_cast<float>(desc.Width);
+    vp.Height   = static_cast<float>(desc.Height);
+    vp.MaxDepth = 1.0f;
+    ctx->RSSetViewports(1, &vp);
+}
+
+void Renderer::Present()
+{
     m_swapChain->Present(1, 0);
 }
 
