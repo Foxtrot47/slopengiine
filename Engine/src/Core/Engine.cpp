@@ -22,6 +22,7 @@ bool Engine::Initialize(const WindowDesc& windowDesc)
     }
 
     m_assets.Init(m_renderer.GetDevice(), m_renderer.GetContext());
+    m_shaders.Init(m_renderer.GetDevice());
 
     m_window.SetMessageHook(ImGuiLayer::WndProcHandler);
     if (!m_imgui.Init(m_window.GetHandle(),

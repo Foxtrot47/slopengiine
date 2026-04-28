@@ -4,6 +4,7 @@
 #include "Engine/Core/Clock.h"
 #include "Engine/Core/ImGuiLayer.h"
 #include "Engine/Renderer/Renderer.h"
+#include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Input/InputManager.h"
 #include "Engine/Assets/AssetManager.h"
 
@@ -26,6 +27,7 @@ public:
     InputManager&        GetInput()          { return m_input; }
     const InputManager&  GetInput()    const { return m_input; }
     AssetManager&        GetAssets()         { return m_assets; }
+    ShaderLibrary&       GetShaders()        { return m_shaders; }
 
 protected:
     virtual void OnUpdate() {}
@@ -37,6 +39,7 @@ private:
     ImGuiLayer    m_imgui;
     InputManager  m_input;
     AssetManager  m_assets;
+    ShaderLibrary m_shaders;
 };
 
 } // namespace SE

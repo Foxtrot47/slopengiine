@@ -28,12 +28,12 @@ public:
     {
         ID3D11Device* device = GetRenderer().GetDevice();
 
-        if (!m_skybox.Init(device, GetRenderer().GetStateCache())) return false;
+        if (!m_skybox.Init(device, GetRenderer().GetStateCache(), GetShaders())) return false;
         if (!m_skybox.LoadPanorama(device,
                 L"Assets/Textures/citrus_orchard_road_puresky_2k.exr")) return false;
 
         if (!m_lights.Init(device))                return false;
-        if (!m_pipeline.Init(device, GetAssets())) return false;
+        if (!m_pipeline.Init(device, GetAssets(), GetShaders())) return false;
 
         m_mesh    = GetAssets().GetMesh("Assets/Sponza/Sponza.gltf");
         if (!m_mesh) return false;

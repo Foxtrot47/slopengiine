@@ -1,4 +1,5 @@
 #include "Engine/Renderer/SkyboxRenderer.h"
+#include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Core/Logger.h"
 #include <d3dcompiler.h>
 #include <windows.h>
@@ -7,38 +8,22 @@
 
 namespace SE {
 
-bool SkyboxRenderer::Init(ID3D11Device* device, RenderStateCache& cache)
+bool SkyboxRenderer::Init(ID3D11Device* device, RenderStateCache& cache, ShaderLibrary& shaders)
 {
-    Microsoft::WRL::ComPtr<ID3DBlob> vsBlob, psBlob, errBlob;
-    UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
-#ifdef SE_DEBUG
-    flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#endif
-
-    HRESULT hr = D3DCompileFromFile(L"Shaders/Skybox.hlsl",
-        nullptr, nullptr, "VS_Main", "vs_5_0", flags, 0, &vsBlob, &errBlob);
-    if (FAILED(hr))
+    const ShaderPermutation* perm = shaders.Get(L"Shaders/Skybox.hlsl");
+    if (!perm)
     {
-        if (errBlob) SE_LOG_ERROR("SkyboxRenderer VS: %s", (char*)errBlob->GetBufferPointer());
+        SE_LOG_ERROR("SkyboxRenderer: failed to compile Skybox.hlsl via ShaderLibrary");
         return false;
     }
-
-    hr = D3DCompileFromFile(L"Shaders/Skybox.hlsl",
-        nullptr, nullptr, "PS_Main", "ps_5_0", flags, 0, &psBlob, &errBlob);
-    if (FAILED(hr))
-    {
-        if (errBlob) SE_LOG_ERROR("SkyboxRenderer PS: %s", (char*)errBlob->GetBufferPointer());
-        return false;
-    }
-
-    SE_HR(device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_vs));
-    SE_HR(device->CreatePixelShader( psBlob->GetBufferPointer(),  psBlob->GetBufferSize(), nullptr, &m_ps));
+    m_vs = perm->vs;
+    m_ps = perm->ps;
 
     D3D11_INPUT_ELEMENT_DESC layoutDesc[] = {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
     };
     SE_HR(device->CreateInputLayout(layoutDesc, 1,
-        vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_layout));
+        perm->vsBlob->GetBufferPointer(), perm->vsBlob->GetBufferSize(), &m_layout));
 
     if (!m_cb.Create(device)) return false;
 

@@ -8,6 +8,7 @@
 #include "Engine/Renderer/IndexBuffer.h"
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/SamplerState.h"
+#include "Engine/Renderer/ShaderLibrary.h"
 
 namespace SE {
 
@@ -21,7 +22,7 @@ public:
         AssetHandle<Texture2D> roughness;
     };
 
-    bool Init(ID3D11Device* device, AssetManager& assets);
+    bool Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders);
 
     // Build per-submesh texture handles from asset cache; falls back to default 1x1 textures.
     std::vector<SubMat> LoadMeshMaterials(AssetManager& assets, const Mesh& mesh);
