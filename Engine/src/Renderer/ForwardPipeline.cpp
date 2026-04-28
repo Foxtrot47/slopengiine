@@ -282,14 +282,16 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
 }
 
 void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,
-                                         DirectX::XMFLOAT3 tint, float roughnessScale, float metallic)
+                                         DirectX::XMFLOAT3 tint, float roughnessScale, float metallic,
+                                         float debugShadow)
 {
     MaterialParamsCBData mc;
     mc.albedoTint     = tint;
     mc.roughnessScale = roughnessScale;
     mc.metallic       = metallic;
     mc.unlit          = 0.0f;
-    mc._pad[0] = mc._pad[1] = 0.0f;
+    mc.debugShadow    = debugShadow;
+    mc._pad2          = 0.0f;
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 }

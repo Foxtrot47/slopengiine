@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <DirectXMath.h>
 #include <imgui.h>
+#include <algorithm>
 #include "Engine/Core/Engine.h"
 #include "Engine/Core/Logger.h"
 #include "Engine/Assets/AssetManager.h"
@@ -74,6 +75,12 @@ public:
         // Character controller starts at eye level above scene centre.
         m_cc.position = { 0.0f, 5.0f, 0.0f };
 
+        if (m_mesh)
+        {
+            const SE::AABB& b = m_mesh->GetBounds();
+            SE_LOG_INFO("Sponza AABB: min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f)",
+                b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z);
+        }
         SE_LOG_INFO("TestScene ready — Sponza (%u submeshes)", m_mesh->GetSubMeshCount());
         return true;
     }
@@ -162,9 +169,8 @@ protected:
             float er = XMConvertToRadians(m_lights.elevDeg);
             float ar = XMConvertToRadians(m_lights.azimDeg);
             XMFLOAT3 lightDir = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
-            XMFLOAT3 sceneCentre = m_mesh ? m_mesh->GetBounds().Center() : XMFLOAT3{0,0,0};
-            float sceneRadius = 50.0f; // conservative
-            m_shadowMap.UpdateLightMatrix(lightDir, sceneCentre, sceneRadius);
+            SE::AABB bounds = m_mesh ? m_mesh->GetBounds() : SE::AABB{};
+            m_shadowMap.UpdateLightMatrix(lightDir, bounds);
             m_shadowMap.BeginShadowPass(ctx);
             if (m_mesh) m_shadowMap.DrawMesh(ctx, *m_mesh, XMMatrixIdentity());
             m_shadowMap.DrawSphere(ctx, m_ballTransform->position, m_ballRadius);
@@ -177,7 +183,8 @@ protected:
         m_lights.BindPS(ctx, m_camera->eye, m_shadowMap.GetLightViewProj());
         m_pipeline.Begin(ctx, view, proj);
         m_pipeline.SetMaterialParams(ctx,
-            { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic);
+            { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic,
+            m_debugShadow ? 1.0f : 0.0f);
         m_pipeline.SubmitMesh(*m_mesh, XMMatrixIdentity(), m_subMats);
         m_pipeline.Flush(ctx);
         m_shadowMap.Unbind(ctx);
@@ -347,6 +354,9 @@ private:
         ImGui::ColorEdit3("Ambient Color", m_lights.ambientColor);
         ImGui::SliderFloat("Shininess",    &m_lights.shininess, 1.0f, 256.0f, "%.0f");
         ImGui::Separator();
+        ImGui::Text("Shadow Debug");
+        ImGui::Checkbox("Show Shadow Factor", &m_debugShadow);
+        ImGui::Separator();
         ImGui::Text("Point Lights");
         ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
         for (int i = 0; i < m_lights.numLights; ++i)
@@ -464,9 +474,10 @@ private:
     SE::OBB                 m_obbC; // low step for step-up test
     SE::CharacterController m_cc;
 
-    bool                         m_gravityEnabled = true;
-    bool                         m_showColliders  = true;
-    bool                         m_castRay        = false;
+    bool                         m_gravityEnabled    = true;
+    bool                         m_showColliders     = true;
+    bool                         m_castRay           = false;
+    bool                         m_debugShadow       = false;
     SE::PhysicsWorld::RaycastHit m_rayHit        = {};
     bool                         m_rayHitValid   = false;
 };

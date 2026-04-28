@@ -36,7 +36,7 @@ cbuffer PointLightCB : register(b2)
 cbuffer MaterialCB : register(b3)
 {
     float3 AlbedoTint;     float  RoughnessScale;
-    float  Metallic;       float  Unlit;  float2 _mat_pad;
+    float  Metallic;       float  Unlit;  float  DebugShadow;  float _mat_pad2;
 };
 
 Texture2D    g_albedo    : register(t0);
@@ -155,6 +155,10 @@ float4 PS_Main(PSIn input) : SV_TARGET
 
         color += PointLights[i].Color * atten * (pd * kDiff * albedo.rgb + ps * F0);
     }
+
+    // Debug: visualise shadow factor as greyscale when DebugShadow > 0.5
+    if (DebugShadow > 0.5f)
+        return float4(shadow, shadow, shadow, 1.0f);
 
     return float4(color, albedo.a);
 }

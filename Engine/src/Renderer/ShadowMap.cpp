@@ -1,5 +1,6 @@
 #include "Engine/Renderer/ShadowMap.h"
 #include "Engine/Core/Logger.h"
+#include <cfloat>
 #include <cmath>
 
 namespace SE {
@@ -117,23 +118,73 @@ bool ShadowMap::Init(ID3D11Device* device, ShaderLibrary& shaders, uint32_t reso
     return true;
 }
 
-void ShadowMap::UpdateLightMatrix(DirectX::XMFLOAT3 lightDir,
-                                   DirectX::XMFLOAT3 sceneCentre, float sceneRadius)
+void ShadowMap::UpdateLightMatrix(DirectX::XMFLOAT3 lightDir, const AABB& sceneBounds)
 {
     using namespace DirectX;
+
     XMVECTOR dir    = XMVector3Normalize(XMLoadFloat3(&lightDir));
-    XMVECTOR center = XMLoadFloat3(&sceneCentre);
-    // Place the camera in the direction the light comes FROM (i.e. where the sun is).
-    XMVECTOR eye    = XMVectorAdd(center, XMVectorScale(dir, sceneRadius));
+    XMFLOAT3 centre = sceneBounds.Center();
+    XMFLOAT3 ext    = sceneBounds.Extents();
+    // Pull eye far enough along light direction so the whole scene is in front of it.
+    float maxExt    = ext.x; if (ext.y > maxExt) maxExt = ext.y; if (ext.z > maxExt) maxExt = ext.z;
+
+    XMVECTOR center = XMLoadFloat3(&centre);
+    XMVECTOR eye    = XMVectorAdd(center, XMVectorScale(dir, maxExt * 2.0f));
     XMVECTOR up     = XMVectorSet(0, 1, 0, 0);
-    // If light is nearly vertical, pick a different up vector.
     if (fabsf(XMVectorGetY(dir)) > 0.99f)
         up = XMVectorSet(0, 0, 1, 0);
 
     XMMATRIX view = XMMatrixLookAtLH(eye, center, up);
-    XMMATRIX proj = XMMatrixOrthographicLH(
-        sceneRadius * 2.0f, sceneRadius * 2.0f, 0.1f, sceneRadius * 3.0f);
+
+    // Compute tight ortho bounds by projecting all 8 AABB corners into light-view space.
+    float minX = FLT_MAX, maxX = -FLT_MAX;
+    float minY = FLT_MAX, maxY = -FLT_MAX;
+    float minZ = FLT_MAX, maxZ = -FLT_MAX;
+
+    const XMFLOAT3& mn = sceneBounds.min;
+    const XMFLOAT3& mx = sceneBounds.max;
+    for (int i = 0; i < 8; ++i)
+    {
+        XMFLOAT3 corner = {
+            (i & 1) ? mx.x : mn.x,
+            (i & 2) ? mx.y : mn.y,
+            (i & 4) ? mx.z : mn.z
+        };
+        XMVECTOR vc = XMVector3TransformCoord(XMLoadFloat3(&corner), view);
+        float x = XMVectorGetX(vc), y = XMVectorGetY(vc), z = XMVectorGetZ(vc);
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+        if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
+
+    // Small XY margin + pull near/far slightly to avoid precision clipping.
+    float padXY = (maxX - minX) * 0.005f;
+    float nearZ  = minZ * 0.9f; if (nearZ < 0.01f) nearZ = 0.01f;
+    float farZ   = maxZ * 1.1f;
+
+    XMMATRIX proj = XMMatrixOrthographicOffCenterLH(
+        minX - padXY, maxX + padXY,
+        minY - padXY, maxY + padXY,
+        nearZ, farZ);
     m_lightViewProj = view * proj;
+
+    static bool s_logged = false;
+    if (!s_logged)
+    {
+        s_logged = true;
+        XMFLOAT4X4 m;
+        XMStoreFloat4x4(&m, m_lightViewProj);
+        float ex = XMVectorGetX(eye), ey = XMVectorGetY(eye), ez = XMVectorGetZ(eye);
+        SE_LOG_INFO("ShadowMap::UpdateLightMatrix — first call:");
+        SE_LOG_INFO("  dir=(%.3f,%.3f,%.3f)  centre=(%.3f,%.3f,%.3f)",
+            lightDir.x, lightDir.y, lightDir.z, centre.x, centre.y, centre.z);
+        SE_LOG_INFO("  eye=(%.1f,%.1f,%.1f)  viewBoundsXY=[%.1f,%.1f]x[%.1f,%.1f]  Z=[%.1f,%.1f]",
+            ex, ey, ez, minX, maxX, minY, maxY, nearZ, farZ);
+        SE_LOG_INFO("  LVP row0: %.4f %.4f %.4f %.4f", m._11, m._12, m._13, m._14);
+        SE_LOG_INFO("  LVP row1: %.4f %.4f %.4f %.4f", m._21, m._22, m._23, m._24);
+        SE_LOG_INFO("  LVP row2: %.4f %.4f %.4f %.4f", m._31, m._32, m._33, m._34);
+        SE_LOG_INFO("  LVP row3: %.4f %.4f %.4f %.4f", m._41, m._42, m._43, m._44);
+    }
 }
 
 void ShadowMap::BeginShadowPass(ID3D11DeviceContext* ctx)
