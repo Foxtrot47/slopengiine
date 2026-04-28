@@ -188,7 +188,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M44 | ~~Shadow map (directional; CSM-ready depth pass)~~ ✓ |
 | M45 | ~~PCF soft shadows~~ ✓ |
 | M46 | ~~Render-to-texture; fullscreen quad pass infrastructure~~ ✓ |
-| M47 | Deferred shading (G-buffer: albedo, normal, depth, material) |
+| M47 | ~~Deferred shading (G-buffer: albedo, normal, depth, material)~~ ✓ |
 | M48 | Point light shadow maps (cube depth map, 1–2 closest lights) |
 | M49 | SSAO |
 | M50 | HDR + tone mapping (Reinhard + ACES) |
