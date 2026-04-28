@@ -17,6 +17,7 @@
 #include "Engine/Renderer/LightEnvironment.h"
 #include "Engine/Renderer/ForwardPipeline.h"
 #include "Engine/Renderer/SkyboxRenderer.h"
+#include "Engine/Renderer/ShadowMap.h"
 #include "Engine/Input/GamepadState.h"
 
 using namespace DirectX;
@@ -34,6 +35,7 @@ public:
 
         if (!m_lights.Init(device))                return false;
         if (!m_pipeline.Init(device, GetAssets(), GetShaders())) return false;
+        if (!m_shadowMap.Init(device, GetShaders(), 2048)) return false;
 
         m_mesh    = GetAssets().GetMesh("Assets/Sponza/Sponza.gltf");
         if (!m_mesh) return false;
@@ -155,14 +157,29 @@ protected:
 
         DrawUI(view, proj);
 
+        // Shadow pass
+        {
+            float er = XMConvertToRadians(m_lights.elevDeg);
+            float ar = XMConvertToRadians(m_lights.azimDeg);
+            XMFLOAT3 lightDir = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
+            XMFLOAT3 sceneCentre = m_mesh ? m_mesh->GetBounds().Center() : XMFLOAT3{0,0,0};
+            float sceneRadius = 50.0f; // conservative
+            m_shadowMap.UpdateLightMatrix(lightDir, sceneCentre, sceneRadius);
+            m_shadowMap.BeginShadowPass(ctx);
+            if (m_mesh) m_shadowMap.DrawMesh(ctx, *m_mesh, XMMatrixIdentity());
+            m_shadowMap.EndShadowPass(ctx);
+        }
+
         m_skybox.Draw(ctx, view, proj);
 
-        m_lights.BindPS(ctx, m_camera->eye);
+        m_shadowMap.BindForLitPass(ctx);
+        m_lights.BindPS(ctx, m_camera->eye, m_shadowMap.GetLightViewProj());
         m_pipeline.Begin(ctx, view, proj);
         m_pipeline.SetMaterialParams(ctx,
             { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic);
         m_pipeline.SubmitMesh(*m_mesh, XMMatrixIdentity(), m_subMats);
         m_pipeline.Flush(ctx);
+        m_shadowMap.Unbind(ctx);
         m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
 
         if (m_castRay)
@@ -422,6 +439,7 @@ private:
     SE::SkyboxRenderer                       m_skybox;
     SE::LightEnvironment                     m_lights;
     SE::ForwardPipeline                      m_pipeline;
+    SE::ShadowMap                            m_shadowMap;
     SE::AssetHandle<SE::Mesh>                m_mesh;
     std::vector<SE::ForwardPipeline::SubMat> m_subMats;
 
