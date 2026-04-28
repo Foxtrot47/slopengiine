@@ -5,6 +5,8 @@
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Renderer/Mesh.h"
+#include "Engine/Renderer/VertexBuffer.h"
+#include "Engine/Renderer/IndexBuffer.h"
 
 namespace SE {
 
@@ -22,6 +24,9 @@ public:
 
     // Draw a mesh into the shadow map.
     void DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, DirectX::XMMATRIX model);
+
+    // Draw a unit-sphere occluder into the shadow map.
+    void DrawSphere(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 position, float radius);
 
     // Unbind shadow RT; restore previous viewport / render targets.
     void EndShadowPass(ID3D11DeviceContext* ctx);
@@ -45,19 +50,24 @@ private:
     uint32_t m_resolution = 2048;
     DirectX::XMMATRIX m_lightViewProj = {};
 
-    Microsoft::WRL::ComPtr<ID3D11Texture2D>          m_depthTex;
-    Microsoft::WRL::ComPtr<ID3D11DepthStencilView>   m_dsv;
+    Microsoft::WRL::ComPtr<ID3D11Texture2D>           m_depthTex;
+    Microsoft::WRL::ComPtr<ID3D11DepthStencilView>    m_dsv;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>  m_srv;
     Microsoft::WRL::ComPtr<ID3D11SamplerState>        m_shadowSampler;
     Microsoft::WRL::ComPtr<ID3D11InputLayout>         m_layout;
+    Microsoft::WRL::ComPtr<ID3D11RasterizerState>     m_shadowRS;
+
+    VertexBuffer  m_sphereVB;
+    IndexBuffer   m_sphereIB;
 
     const ShaderPermutation* m_perm = nullptr;
     ConstantBuffer<ShadowCBData> m_cb;
 
     // Saved state to restore after shadow pass.
-    D3D11_VIEWPORT         m_savedVP     = {};
-    ID3D11RenderTargetView* m_savedRTV   = nullptr;
-    ID3D11DepthStencilView* m_savedDSV   = nullptr;
+    D3D11_VIEWPORT          m_savedVP  = {};
+    ID3D11RenderTargetView* m_savedRTV = nullptr;
+    ID3D11DepthStencilView* m_savedDSV = nullptr;
+    ID3D11RasterizerState*  m_savedRS  = nullptr;
 };
 
 } // namespace SE
