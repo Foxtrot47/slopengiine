@@ -2,6 +2,7 @@
 #include <d3d11.h>
 #include <DirectXMath.h>
 #include <wrl/client.h>
+#include "Engine/Physics/AABB.h"
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Renderer/Mesh.h"
@@ -15,9 +16,8 @@ class ShadowMap
 public:
     bool Init(ID3D11Device* device, ShaderLibrary& shaders, uint32_t resolution = 2048);
 
-    // Compute light view-projection matrix from directional light direction + scene bounds.
-    void UpdateLightMatrix(DirectX::XMFLOAT3 lightDir,
-                           DirectX::XMFLOAT3 sceneCentre, float sceneRadius);
+    // Compute light view-projection matrix from directional light direction + scene AABB.
+    void UpdateLightMatrix(DirectX::XMFLOAT3 lightDir, const AABB& sceneBounds);
 
     // Bind shadow depth texture as render target; clear depth.
     void BeginShadowPass(ID3D11DeviceContext* ctx);

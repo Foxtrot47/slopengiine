@@ -34,7 +34,8 @@ public:
 
     // Upload and bind MaterialParamsCB (b3).
     void SetMaterialParams(ID3D11DeviceContext* ctx,
-                           DirectX::XMFLOAT3 tint, float roughnessScale, float metallic);
+                           DirectX::XMFLOAT3 tint, float roughnessScale, float metallic,
+                           float debugShadow = 0.0f);
 
     // --- Queued rendering (M42) ---
     // Submit a mesh for sorted draw. Call Flush() after all submits to actually draw.
@@ -73,7 +74,7 @@ private:
     struct MaterialParamsCBData
     {
         DirectX::XMFLOAT3 albedoTint; float roughnessScale;
-        float metallic; float unlit; float _pad[2];
+        float metallic; float unlit; float debugShadow; float _pad2;
     };
 
     // Stored per-submit for Flush() to reference.
