@@ -10,6 +10,7 @@
 #include "Engine/Renderer/SamplerState.h"
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Renderer/RenderQueue.h"
+#include "Engine/Renderer/Frustum.h"
 
 namespace SE {
 
@@ -60,6 +61,7 @@ public:
                   DirectX::XMFLOAT3 from, DirectX::XMFLOAT3 to, DirectX::XMFLOAT3 color);
 
     uint32_t GetLastDrawCalls() const { return m_lastDrawCalls; }
+    uint32_t GetLastCulledCount() const { return m_lastCulled; }
 
 private:
     struct TransformCBData
@@ -101,10 +103,12 @@ private:
 
     DirectX::XMMATRIX m_view = {};
     DirectX::XMMATRIX m_proj = {};
+    Frustum                  m_frustum;
 
     RenderQueue              m_queue;
     std::vector<QueuedDraw>  m_queuedDraws;
     uint32_t                 m_lastDrawCalls = 0;
+    uint32_t                 m_lastCulled    = 0;
 };
 
 } // namespace SE
