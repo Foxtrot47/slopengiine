@@ -39,6 +39,8 @@ public:
 
     DirectX::XMMATRIX GetLightViewProj() const { return m_lightViewProj; }
     uint32_t GetResolution() const { return m_resolution; }
+    ID3D11ShaderResourceView* GetSRV()     const { return m_srv.Get(); }
+    ID3D11SamplerState*       GetSampler() const { return m_shadowSampler.Get(); }
 
 private:
     struct ShadowCBData
