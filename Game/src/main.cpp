@@ -167,6 +167,7 @@ protected:
             m_shadowMap.UpdateLightMatrix(lightDir, sceneCentre, sceneRadius);
             m_shadowMap.BeginShadowPass(ctx);
             if (m_mesh) m_shadowMap.DrawMesh(ctx, *m_mesh, XMMatrixIdentity());
+            m_shadowMap.DrawSphere(ctx, m_ballTransform->position, m_ballRadius);
             m_shadowMap.EndShadowPass(ctx);
         }
 
