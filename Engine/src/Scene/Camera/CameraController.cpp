@@ -4,107 +4,156 @@
 
 namespace SE {
 
-void CameraController::Update(float /*dt*/, InputManager& input, CameraComponent& cam,
+static void CaptureMouse(HWND hwnd, bool& capturing, bool& skipFirst)
+{
+    capturing  = true;
+    skipFirst  = true;
+    ShowCursor(FALSE);
+    // Warp to centre immediately so first delta is zero.
+    RECT r; GetClientRect(hwnd, &r);
+    POINT c = { (r.right - r.left) / 2, (r.bottom - r.top) / 2 };
+    ClientToScreen(hwnd, &c);
+    SetCursorPos(c.x, c.y);
+}
+
+static void ReleaseMouse(bool& capturing)
+{
+    capturing = false;
+    ShowCursor(TRUE);
+}
+
+// Reads mouse delta from screen-centre warp technique (same as old FPS code).
+static void PollMouseDelta(HWND hwnd, InputManager& input,
+                           bool& skipFirst, float& outDX, float& outDY)
+{
+    RECT r; GetClientRect(hwnd, &r);
+    int32_t cx = (r.right  - r.left) / 2;
+    int32_t cy = (r.bottom - r.top)  / 2;
+
+    outDX = outDY = 0.0f;
+    if (!skipFirst)
+    {
+        POINT cursor; GetCursorPos(&cursor); ScreenToClient(hwnd, &cursor);
+        outDX = static_cast<float>(cursor.x - cx);
+        outDY = static_cast<float>(cursor.y - cy);
+    }
+    skipFirst = false;
+
+    input.IgnoreMouseMoveAt(cx, cy);
+    POINT screen = { cx, cy }; ClientToScreen(hwnd, &screen);
+    SetCursorPos(screen.x, screen.y);
+}
+
+// -------------------------------------------------------------------------
+
+void CameraController::Update(float dt, InputManager& input, CameraComponent& cam,
                                HWND hwnd, bool mouseBlocked)
 {
     if (input.IsKeyPressed(VK_TAB))
     {
-        if (m_mode == Mode::Orbit)
+        if (m_mode == Mode::FreeFly)
         {
-            fps.yawDeg   = orbit.yawDeg;
-            fps.pitchDeg = orbit.pitchDeg;
+            // Carry eye position + orientation into FPS state.
+            fps.yawDeg   = freeFly.yawDeg;
+            fps.pitchDeg = freeFly.pitchDeg;
+            // Release mouse capture so FPS can recapture with RMB.
+            if (m_capturing) ReleaseMouse(m_capturing);
             m_mode = Mode::FPS;
         }
-        else
+        else // FPS → FreeFly
         {
-            m_mode = Mode::Orbit;
+            // Carry current camera eye + orientation back into free-fly.
+            freeFly.eye      = cam.eye;
+            freeFly.yawDeg   = fps.yawDeg;
+            freeFly.pitchDeg = fps.pitchDeg;
+            if (m_capturing) ReleaseMouse(m_capturing);
+            m_mode = Mode::FreeFly;
         }
     }
 
-    if (m_mode == Mode::Orbit)
-        UpdateOrbit(input, cam, mouseBlocked);
+    if (m_mode == Mode::FreeFly)
+        UpdateFreeFly(dt, input, cam, hwnd, mouseBlocked);
     else
         UpdateFPS(input, cam, hwnd, mouseBlocked);
 }
 
-void CameraController::UpdateOrbit(const InputManager& input, CameraComponent& cam, bool mouseBlocked)
+void CameraController::UpdateFreeFly(float dt, InputManager& input, CameraComponent& cam,
+                                      HWND hwnd, bool mouseBlocked)
 {
     using namespace DirectX;
 
-    if (!mouseBlocked)
-    {
-        if (input.IsKeyDown(VK_LBUTTON))
-        {
-            orbit.yawDeg   += input.GetMouseDeltaX() * orbit.sensitivity;
-            orbit.pitchDeg -= input.GetMouseDeltaY() * orbit.sensitivity;
-            if (orbit.pitchDeg < -89.0f) orbit.pitchDeg = -89.0f;
-            if (orbit.pitchDeg >  89.0f) orbit.pitchDeg =  89.0f;
-        }
+    bool rmbDown = input.IsKeyDown(VK_RBUTTON) && !mouseBlocked;
 
-        int wheel = input.GetMouseWheelDelta();
-        if (wheel != 0)
-        {
-            orbit.distance -= wheel * orbit.zoomSpeed * 0.1f;
-            if (orbit.distance < 0.5f) orbit.distance = 0.5f;
-        }
+    if (rmbDown && !m_capturing)
+        CaptureMouse(hwnd, m_capturing, m_skipFirstFrame);
+    else if ((!rmbDown || mouseBlocked) && m_capturing)
+        ReleaseMouse(m_capturing);
+
+    if (m_capturing)
+    {
+        float dx, dy;
+        PollMouseDelta(hwnd, input, m_skipFirstFrame, dx, dy);
+        freeFly.yawDeg   += dx * freeFly.sensitivity;
+        freeFly.pitchDeg -= dy * freeFly.sensitivity;
+        if (freeFly.pitchDeg < -89.0f) freeFly.pitchDeg = -89.0f;
+        if (freeFly.pitchDeg >  89.0f) freeFly.pitchDeg =  89.0f;
     }
 
-    float yaw   = XMConvertToRadians(orbit.yawDeg);
-    float pitch = XMConvertToRadians(orbit.pitchDeg);
+    float yaw   = XMConvertToRadians(freeFly.yawDeg);
+    float pitch = XMConvertToRadians(freeFly.pitchDeg);
 
-    XMFLOAT3 eye;
-    eye.x = orbit.target.x + sinf(yaw)  * cosf(pitch) * orbit.distance;
-    eye.y = orbit.target.y + sinf(pitch)               * orbit.distance;
-    eye.z = orbit.target.z - cosf(yaw)  * cosf(pitch) * orbit.distance;
+    XMFLOAT3 forward = {
+        sinf(yaw) * cosf(pitch),
+        sinf(pitch),
+        cosf(yaw) * cosf(pitch)
+    };
+    // Right is always horizontal (no roll).
+    XMFLOAT3 right = { cosf(yaw), 0.0f, -sinf(yaw) };
 
-    cam.eye    = eye;
-    cam.target = orbit.target;
-    cam.up     = { 0.0f, 1.0f, 0.0f };
+    float speed = freeFly.moveSpeed;
+    if (input.IsKeyDown(VK_SHIFT)) speed *= 3.0f;
+
+    XMVECTOR eye = XMLoadFloat3(&freeFly.eye);
+    XMVECTOR fwd = XMLoadFloat3(&forward);
+    XMVECTOR rgt = XMLoadFloat3(&right);
+    XMVECTOR up  = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+    if (input.IsKeyDown('W')) eye = XMVectorAdd(eye, XMVectorScale(fwd, speed * dt));
+    if (input.IsKeyDown('S')) eye = XMVectorSubtract(eye, XMVectorScale(fwd, speed * dt));
+    if (input.IsKeyDown('D')) eye = XMVectorAdd(eye, XMVectorScale(rgt, speed * dt));
+    if (input.IsKeyDown('A')) eye = XMVectorSubtract(eye, XMVectorScale(rgt, speed * dt));
+    if (input.IsKeyDown('E')) eye = XMVectorAdd(eye, XMVectorScale(up, speed * dt));
+    if (input.IsKeyDown('Q')) eye = XMVectorSubtract(eye, XMVectorScale(up, speed * dt));
+
+    XMStoreFloat3(&freeFly.eye, eye);
+
+    cam.eye    = freeFly.eye;
+    cam.target = {
+        freeFly.eye.x + forward.x,
+        freeFly.eye.y + forward.y,
+        freeFly.eye.z + forward.z
+    };
+    cam.up = { 0.0f, 1.0f, 0.0f };
 }
 
-// UpdateFPS handles only mouse look (yaw/pitch).
-// Camera eye/target and character movement are set by the caller (main.cpp via CharacterController).
 void CameraController::UpdateFPS(InputManager& input, CameraComponent& /*cam*/,
                                   HWND hwnd, bool mouseBlocked)
 {
     bool rmbDown = input.IsKeyDown(VK_RBUTTON) && !mouseBlocked;
 
-    if (rmbDown && !m_fpsCapturing)
+    if (rmbDown && !m_capturing)
+        CaptureMouse(hwnd, m_capturing, m_skipFirstFrame);
+    else if ((!rmbDown || mouseBlocked) && m_capturing)
+        ReleaseMouse(m_capturing);
+
+    if (m_capturing)
     {
-        m_fpsCapturing = true;
-        m_fpsSkipFirst = true;
-        ShowCursor(FALSE);
-    }
-    else if ((!rmbDown || mouseBlocked) && m_fpsCapturing)
-    {
-        m_fpsCapturing = false;
-        ShowCursor(TRUE);
-    }
-
-    if (m_fpsCapturing)
-    {
-        RECT    rect;
-        GetClientRect(hwnd, &rect);
-        int32_t cx = (rect.right  - rect.left) / 2;
-        int32_t cy = (rect.bottom - rect.top)  / 2;
-
-        if (!m_fpsSkipFirst)
-        {
-            POINT cursor;
-            GetCursorPos(&cursor);
-            ScreenToClient(hwnd, &cursor);
-
-            fps.yawDeg   += (cursor.x - cx) * fps.sensitivity;
-            fps.pitchDeg -= (cursor.y - cy) * fps.sensitivity;
-            if (fps.pitchDeg < -89.0f) fps.pitchDeg = -89.0f;
-            if (fps.pitchDeg >  89.0f) fps.pitchDeg =  89.0f;
-        }
-        m_fpsSkipFirst = false;
-
-        input.IgnoreMouseMoveAt(cx, cy);
-        POINT screen = { cx, cy };
-        ClientToScreen(hwnd, &screen);
-        SetCursorPos(screen.x, screen.y);
+        float dx, dy;
+        PollMouseDelta(hwnd, input, m_skipFirstFrame, dx, dy);
+        fps.yawDeg   += dx * fps.sensitivity;
+        fps.pitchDeg -= dy * fps.sensitivity;
+        if (fps.pitchDeg < -89.0f) fps.pitchDeg = -89.0f;
+        if (fps.pitchDeg >  89.0f) fps.pitchDeg =  89.0f;
     }
 }
 

@@ -9,16 +9,15 @@ class InputManager;
 class CameraController
 {
 public:
-    enum class Mode { Orbit, FPS };
+    enum class Mode { FreeFly, FPS };
 
-    struct OrbitState
+    struct FreeFlyState
     {
-        DirectX::XMFLOAT3 target      = { 0.0f, 0.0f, 0.0f };
-        float             distance    = 10.0f;
-        float             yawDeg      =  0.0f;
-        float             pitchDeg    = -15.0f;
-        float             sensitivity =  0.3f;
-        float             zoomSpeed   =  1.0f;
+        DirectX::XMFLOAT3 eye         = { 0.0f, 4.0f, -22.0f };
+        float             yawDeg      =   0.0f;
+        float             pitchDeg    =   0.0f;
+        float             moveSpeed   =  20.0f;
+        float             sensitivity =   0.15f;
     };
 
     struct FPSState
@@ -28,8 +27,8 @@ public:
         float sensitivity = 0.15f;
     };
 
-    OrbitState orbit;
-    FPSState   fps;
+    FreeFlyState freeFly;
+    FPSState     fps;
 
     void Update(float dt, InputManager& input, CameraComponent& cam,
                 HWND hwnd, bool mouseBlocked = false);
@@ -37,12 +36,14 @@ public:
     Mode GetMode() const { return m_mode; }
 
 private:
-    Mode m_mode         = Mode::Orbit;
-    bool m_fpsCapturing = false;
-    bool m_fpsSkipFirst = false;
+    Mode m_mode           = Mode::FreeFly;
+    bool m_capturing      = false;
+    bool m_skipFirstFrame = false;
 
-    void UpdateOrbit(const InputManager& input, CameraComponent& cam, bool mouseBlocked);
-    void UpdateFPS(InputManager& input, CameraComponent& cam, HWND hwnd, bool mouseBlocked);
+    void UpdateFreeFly(float dt, InputManager& input, CameraComponent& cam,
+                       HWND hwnd, bool mouseBlocked);
+    void UpdateFPS    (InputManager& input, CameraComponent& cam,
+                       HWND hwnd, bool mouseBlocked);
 };
 
 } // namespace SE
