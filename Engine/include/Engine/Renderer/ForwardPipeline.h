@@ -9,6 +9,7 @@
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/SamplerState.h"
 #include "Engine/Renderer/ShaderLibrary.h"
+#include "Engine/Renderer/RenderQueue.h"
 
 namespace SE {
 
@@ -34,11 +35,15 @@ public:
     void SetMaterialParams(ID3D11DeviceContext* ctx,
                            DirectX::XMFLOAT3 tint, float roughnessScale, float metallic);
 
-    // Draw an indexed mesh at a given world transform with per-submesh textures.
+    // --- Queued rendering (M42) ---
+    // Submit a mesh for sorted draw. Call Flush() after all submits to actually draw.
+    void SubmitMesh(const Mesh& mesh, DirectX::XMMATRIX model,
+                    const std::vector<SubMat>& mats, bool transparent = false);
+    void Flush(ID3D11DeviceContext* ctx);
+
+    // --- Immediate rendering (legacy) ---
     void DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
                   DirectX::XMMATRIX model, const std::vector<SubMat>& mats);
-
-    // Draw the debug sphere at position scaled by radius with a flat color tint.
     void DrawSphere(ID3D11DeviceContext* ctx,
                     DirectX::XMFLOAT3 position, float radius, DirectX::XMFLOAT3 tint);
 
@@ -47,15 +52,14 @@ public:
                         DirectX::XMFLOAT3 position, float radius, DirectX::XMFLOAT3 color);
     void DrawWireAABB(ID3D11DeviceContext* ctx,
                       DirectX::XMFLOAT3 min, DirectX::XMFLOAT3 max, DirectX::XMFLOAT3 color);
-    // Circle in the XZ plane at center.y — useful for visualizing infinite horizontal planes.
     void DrawWireDisc(ID3D11DeviceContext* ctx,
                       DirectX::XMFLOAT3 center, float radius, DirectX::XMFLOAT3 color);
-    // Wire OBB drawn using the OBB's own world matrix (unit cube -1..1 mapped by OBB::GetWorldMatrix()).
     void DrawWireBox(ID3D11DeviceContext* ctx,
                      DirectX::XMMATRIX world, DirectX::XMFLOAT3 color);
-    // Single world-space line segment. Uploads 2 vertices via Map/Unmap each call.
     void DrawLine(ID3D11DeviceContext* ctx,
                   DirectX::XMFLOAT3 from, DirectX::XMFLOAT3 to, DirectX::XMFLOAT3 color);
+
+    uint32_t GetLastDrawCalls() const { return m_lastDrawCalls; }
 
 private:
     struct TransformCBData
@@ -70,10 +74,17 @@ private:
         float metallic; float unlit; float _pad[2];
     };
 
+    // Stored per-submit for Flush() to reference.
+    struct QueuedDraw
+    {
+        const Mesh*              mesh;
+        const std::vector<SubMat>* mats;
+    };
+
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vs;
     Microsoft::WRL::ComPtr<ID3D11PixelShader>  m_ps;
     Microsoft::WRL::ComPtr<ID3D11InputLayout>  m_layout;
-    Microsoft::WRL::ComPtr<ID3D11Buffer>       m_lineBuffer; // dynamic, 2 verts
+    Microsoft::WRL::ComPtr<ID3D11Buffer>       m_lineBuffer;
 
     ConstantBuffer<TransformCBData>      m_transformCB;
     ConstantBuffer<MaterialParamsCBData> m_materialCB;
@@ -90,6 +101,10 @@ private:
 
     DirectX::XMMATRIX m_view = {};
     DirectX::XMMATRIX m_proj = {};
+
+    RenderQueue              m_queue;
+    std::vector<QueuedDraw>  m_queuedDraws;
+    uint32_t                 m_lastDrawCalls = 0;
 };
 
 } // namespace SE
