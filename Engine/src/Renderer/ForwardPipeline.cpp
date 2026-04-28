@@ -190,12 +190,66 @@ void ForwardPipeline::Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, Di
 {
     m_view = view;
     m_proj = proj;
+    m_queue.Clear();
+    m_queuedDraws.clear();
 
     m_sampler.BindPS(ctx, 0);
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ctx->IASetInputLayout(m_layout.Get());
     ctx->VSSetShader(m_vs.Get(), nullptr, 0);
     ctx->PSSetShader(m_ps.Get(), nullptr, 0);
+}
+
+void ForwardPipeline::SubmitMesh(const Mesh& mesh, DirectX::XMMATRIX model,
+                                  const std::vector<SubMat>& mats, bool transparent)
+{
+    using namespace DirectX;
+
+    // Compute camera-space Z of the mesh origin for sorting.
+    XMVECTOR origin = XMVector3Transform(XMVectorSet(0, 0, 0, 1), model);
+    XMVECTOR viewOrigin = XMVector3Transform(origin, m_view);
+    float depth = XMVectorGetZ(viewOrigin);
+
+    uint32_t drawIdx = static_cast<uint32_t>(m_queuedDraws.size());
+    m_queuedDraws.push_back({ &mesh, &mats });
+
+    for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
+    {
+        RenderItem item;
+        item.model        = model;
+        item.meshIndex    = drawIdx;
+        item.subMeshIndex = i;
+        item.sortDepth    = depth;
+        item.transparent  = transparent;
+        m_queue.Push(item);
+    }
+}
+
+void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
+{
+    using namespace DirectX;
+
+    m_queue.Sort();
+    m_lastDrawCalls = 0;
+
+    for (auto& item : m_queue.Items())
+    {
+        auto& draw = m_queuedDraws[item.meshIndex];
+
+        TransformCBData cb;
+        XMStoreFloat4x4(&cb.model,      item.model);
+        XMStoreFloat4x4(&cb.view,       m_view);
+        XMStoreFloat4x4(&cb.projection, m_proj);
+        m_transformCB.Update(ctx, cb);
+        m_transformCB.BindVS(ctx, 0);
+
+        auto& mat = (*draw.mats)[item.subMeshIndex];
+        mat.albedo->BindPS(ctx, 0);
+        mat.roughness->BindPS(ctx, 1);
+        mat.normal->BindPS(ctx, 2);
+        draw.mesh->DrawSubMesh(ctx, item.subMeshIndex);
+        ++m_lastDrawCalls;
+    }
 }
 
 void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,

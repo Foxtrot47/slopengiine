@@ -161,7 +161,8 @@ protected:
         m_pipeline.Begin(ctx, view, proj);
         m_pipeline.SetMaterialParams(ctx,
             { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic);
-        m_pipeline.DrawMesh(ctx, *m_mesh, XMMatrixIdentity(), m_subMats);
+        m_pipeline.SubmitMesh(*m_mesh, XMMatrixIdentity(), m_subMats);
+        m_pipeline.Flush(ctx);
         m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
 
         if (m_castRay)
