@@ -10,7 +10,8 @@ bool LightEnvironment::Init(ID3D11Device* device)
     return true;
 }
 
-void LightEnvironment::BindPS(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 cameraPos)
+void LightEnvironment::BindPS(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 cameraPos,
+                               DirectX::XMMATRIX lightViewProj)
 {
     using namespace DirectX;
 
@@ -26,6 +27,7 @@ void LightEnvironment::BindPS(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 camera
     lc._pad1        = 0.0f;
     lc.cameraPos    = cameraPos;
     lc._pad2        = 0.0f;
+    XMStoreFloat4x4(&lc.lightViewProj, lightViewProj);
     m_lightCB.Update(ctx, lc);
     m_lightCB.BindPS(ctx, 1);
 

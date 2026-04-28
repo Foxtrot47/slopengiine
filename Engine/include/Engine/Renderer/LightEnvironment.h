@@ -29,7 +29,8 @@ public:
     bool Init(ID3D11Device* device);
 
     // Fill and bind LightCB (b1) + PointLightCB (b2).
-    void BindPS(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 cameraPos);
+    void BindPS(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 cameraPos,
+                DirectX::XMMATRIX lightViewProj = DirectX::XMMatrixIdentity());
 
 private:
     struct LightCBData
@@ -38,6 +39,7 @@ private:
         DirectX::XMFLOAT3 lightColor;  float _pad0;
         DirectX::XMFLOAT3 ambientColor;float _pad1;
         DirectX::XMFLOAT3 cameraPos;   float _pad2;
+        DirectX::XMFLOAT4X4 lightViewProj;
     };
     struct PointEntryData { DirectX::XMFLOAT3 pos; float radius; DirectX::XMFLOAT3 color; float _pad; };
     struct PointLightCBData { PointEntryData lights[8]; int num; DirectX::XMFLOAT3 _pad; };

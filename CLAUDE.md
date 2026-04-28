@@ -185,7 +185,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M41 | ~~RShader permutation system (preprocessor define variants)~~ ✓ |
 | M42 | ~~Render queue; front-to-back opaque, back-to-front transparent~~ ✓ |
 | M43 | ~~Frustum culling (AABB vs 6 planes)~~ ✓ |
-| M44 | Shadow map (directional; CSM-ready depth pass) |
+| M44 | ~~Shadow map (directional; CSM-ready depth pass)~~ ✓ |
 | M45 | PCF soft shadows |
 | M46 | Render-to-texture; fullscreen quad pass infrastructure |
 | M47 | Deferred shading (G-buffer: albedo, normal, depth, material) |

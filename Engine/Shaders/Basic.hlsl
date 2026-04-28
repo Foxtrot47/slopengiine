@@ -15,6 +15,7 @@ cbuffer LightCB : register(b1)
     float  _pad1;
     float3 CameraPos;
     float  _pad2;
+    row_major matrix LightViewProj;
 };
 
 struct PointLight
@@ -41,7 +42,9 @@ cbuffer MaterialCB : register(b3)
 Texture2D    g_albedo    : register(t0);
 Texture2D    g_roughness : register(t1);
 Texture2D    g_normal    : register(t2);
+Texture2D    g_shadowMap : register(t3);
 SamplerState g_sampler   : register(s0);
+SamplerComparisonState g_shadowSampler : register(s1);
 
 struct VSIn
 {
@@ -98,6 +101,33 @@ float4 PS_Main(PSIn input) : SV_TARGET
     float3 F0    = lerp(float3(0.04f, 0.04f, 0.04f), albedo.rgb, Metallic);
     float  kDiff = 1.0f - Metallic;
 
+    // Shadow mapping with PCF 3x3
+    float shadow = 1.0f;
+    {
+        float4 shadowClip = mul(float4(input.WorldPos, 1.0f), LightViewProj);
+        float3 shadowNDC  = shadowClip.xyz / shadowClip.w;
+        float2 shadowUV   = float2(shadowNDC.x * 0.5f + 0.5f, -shadowNDC.y * 0.5f + 0.5f);
+        float  depthRef   = shadowNDC.z;
+
+        if (saturate(shadowUV.x) == shadowUV.x && saturate(shadowUV.y) == shadowUV.y && depthRef < 1.0f)
+        {
+            float w, h;
+            g_shadowMap.GetDimensions(w, h);
+            float texelSize = 1.0f / w;
+
+            shadow = 0.0f;
+            [unroll] for (int dx = -1; dx <= 1; ++dx)
+            {
+                [unroll] for (int dy = -1; dy <= 1; ++dy)
+                {
+                    shadow += g_shadowMap.SampleCmpLevelZero(g_shadowSampler,
+                        shadowUV + float2(dx, dy) * texelSize, depthRef);
+                }
+            }
+            shadow /= 9.0f;
+        }
+    }
+
     // Directional light
     float3 L    = normalize(LightDir);
     float3 H    = normalize(L + V);
@@ -105,8 +135,8 @@ float4 PS_Main(PSIn input) : SV_TARGET
     float  spec = (diff > 0.0f) ? pow(max(dot(N, H), 0.0f), pixShine) * specMask : 0.0f;
 
     float3 color = AmbientColor * albedo.rgb
-                 + LightColor * diff * kDiff * albedo.rgb
-                 + LightColor * spec * F0;
+                 + shadow * LightColor * diff * kDiff * albedo.rgb
+                 + shadow * LightColor * spec * F0;
 
     // Point lights
     for (int i = 0; i < NumPointLights; ++i)
