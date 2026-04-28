@@ -190,8 +190,10 @@ void ForwardPipeline::Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, Di
 {
     m_view = view;
     m_proj = proj;
+    m_frustum.ExtractFromVP(DirectX::XMMatrixMultiply(view, proj));
     m_queue.Clear();
     m_queuedDraws.clear();
+    m_lastCulled = 0;
 
     m_sampler.BindPS(ctx, 0);
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -204,6 +206,33 @@ void ForwardPipeline::SubmitMesh(const Mesh& mesh, DirectX::XMMATRIX model,
                                   const std::vector<SubMat>& mats, bool transparent)
 {
     using namespace DirectX;
+
+    // Frustum cull using the mesh's object-space AABB transformed to world space.
+    const AABB& localBounds = mesh.GetBounds();
+    if (localBounds.IsValid())
+    {
+        // Transform the 8 corners of the local AABB by the model matrix
+        // and compute a world-space AABB for frustum testing.
+        XMFLOAT3 mn = localBounds.min, mx = localBounds.max;
+        AABB worldBounds;
+        for (int i = 0; i < 8; ++i)
+        {
+            XMFLOAT3 corner = {
+                (i & 1) ? mx.x : mn.x,
+                (i & 2) ? mx.y : mn.y,
+                (i & 4) ? mx.z : mn.z
+            };
+            XMVECTOR wc = XMVector3Transform(XMLoadFloat3(&corner), model);
+            XMFLOAT3 wcf;
+            XMStoreFloat3(&wcf, wc);
+            worldBounds.Expand(wcf);
+        }
+        if (!m_frustum.TestAABB(worldBounds))
+        {
+            m_lastCulled += mesh.GetSubMeshCount();
+            return;
+        }
+    }
 
     // Compute camera-space Z of the mesh origin for sorting.
     XMVECTOR origin = XMVector3Transform(XMVectorSet(0, 0, 0, 1), model);

@@ -32,6 +32,7 @@ bool Mesh::Load(ID3D11Device* device, const char* path)
     }
 
     m_subMeshes.reserve(scene->mNumMeshes);
+    m_bounds = AABB{}; // reset to invalid
 
     for (uint32_t m = 0; m < scene->mNumMeshes; ++m)
     {
@@ -62,6 +63,7 @@ bool Mesh::Load(ID3D11Device* device, const char* path)
             vtx.by = mesh->mBitangents ? mesh->mBitangents[v].y : 1.0f;
             vtx.bz = mesh->mBitangents ? mesh->mBitangents[v].z : 0.0f;
             verts.push_back(vtx);
+            m_bounds.Expand({ vtx.x, vtx.y, vtx.z });
         }
 
         std::vector<uint32_t> indices;

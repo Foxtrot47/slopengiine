@@ -4,6 +4,7 @@
 #include <string>
 #include "Engine/Renderer/VertexBuffer.h"
 #include "Engine/Renderer/IndexBuffer.h"
+#include "Engine/Physics/AABB.h"
 
 namespace SE {
 
@@ -37,6 +38,7 @@ public:
     uint32_t         GetSubMeshCount() const { return static_cast<uint32_t>(m_subMeshes.size()); }
     SubMeshInfo      GetSubMeshInfo(uint32_t index) const;
     const std::string& GetDirectory() const { return m_directory; }
+    const AABB&      GetBounds() const { return m_bounds; }
 
 private:
     struct SubMesh
@@ -49,6 +51,7 @@ private:
     };
     std::vector<SubMesh> m_subMeshes;
     std::string          m_directory;
+    AABB                 m_bounds;
 };
 
 } // namespace SE
