@@ -86,32 +86,16 @@ void BuildSphereMesh(float radius, int rings, int segs,
 
 } // anonymous namespace
 
-bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets)
+bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders)
 {
-    Microsoft::WRL::ComPtr<ID3DBlob> vsBlob, psBlob, errBlob;
-    UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
-#ifdef SE_DEBUG
-    flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#endif
-
-    HRESULT hr = D3DCompileFromFile(L"Shaders/Basic.hlsl",
-        nullptr, nullptr, "VS_Main", "vs_5_0", flags, 0, &vsBlob, &errBlob);
-    if (FAILED(hr))
+    const ShaderPermutation* perm = shaders.Get(L"Shaders/Basic.hlsl");
+    if (!perm)
     {
-        if (errBlob) SE_LOG_ERROR("ForwardPipeline VS: %s", (char*)errBlob->GetBufferPointer());
+        SE_LOG_ERROR("ForwardPipeline: failed to compile Basic.hlsl via ShaderLibrary");
         return false;
     }
-
-    hr = D3DCompileFromFile(L"Shaders/Basic.hlsl",
-        nullptr, nullptr, "PS_Main", "ps_5_0", flags, 0, &psBlob, &errBlob);
-    if (FAILED(hr))
-    {
-        if (errBlob) SE_LOG_ERROR("ForwardPipeline PS: %s", (char*)errBlob->GetBufferPointer());
-        return false;
-    }
-
-    SE_HR(device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &m_vs));
-    SE_HR(device->CreatePixelShader( psBlob->GetBufferPointer(),  psBlob->GetBufferSize(), nullptr, &m_ps));
+    m_vs = perm->vs;
+    m_ps = perm->ps;
 
     D3D11_INPUT_ELEMENT_DESC layoutDesc[] =
     {
@@ -122,7 +106,7 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets)
         { "BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 44, D3D11_INPUT_PER_VERTEX_DATA, 0 },
     };
     SE_HR(device->CreateInputLayout(layoutDesc, 5,
-        vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &m_layout));
+        perm->vsBlob->GetBufferPointer(), perm->vsBlob->GetBufferSize(), &m_layout));
 
     if (!m_transformCB.Create(device)) return false;
     if (!m_materialCB.Create(device))  return false;

@@ -182,7 +182,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M38 | ~~MSAA 4× (swap chain + MSAA render target; resolve to back buffer)~~ ✓ |
 | M39 | ~~Skybox (equirectangular HDR panorama; unit cube, depth write off, LESS_EQUAL)~~ ✓ |
 | M40 | ~~Render state cache (blend, rasterizer, depth-stencil state objects)~~ ✓ |
-| M41 | Shader permutation system (preprocessor define variants) |
+| M41 | ~~RShader permutation system (preprocessor define variants)~~ ✓ |
 | M42 | Render queue; front-to-back opaque, back-to-front transparent |
 | M43 | Frustum culling (AABB vs 6 planes) |
 | M44 | Shadow map (directional; CSM-ready depth pass) |

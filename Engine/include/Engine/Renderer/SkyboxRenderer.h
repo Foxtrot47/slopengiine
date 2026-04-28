@@ -6,13 +6,14 @@
 #include "Engine/Renderer/IndexBuffer.h"
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/RenderStateCache.h"
+#include "Engine/Renderer/ShaderLibrary.h"
 
 namespace SE {
 
 class SkyboxRenderer
 {
 public:
-    bool Init(ID3D11Device* device, RenderStateCache& cache);
+    bool Init(ID3D11Device* device, RenderStateCache& cache, ShaderLibrary& shaders);
     bool LoadPanorama(ID3D11Device* device, const wchar_t* path);
 
     // Strip translation from view, draw unit cube at far plane.
