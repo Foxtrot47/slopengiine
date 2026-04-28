@@ -244,8 +244,8 @@ protected:
                 m_debugShadow ? 1.0f : 0.0f);
             m_pipeline.SubmitMesh(*m_mesh, XMMatrixIdentity(), m_subMats);
             m_pipeline.Flush(ctx);
-            m_shadowMap.Unbind(ctx);
             m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
+            m_shadowMap.Unbind(ctx);
         }
 
         if (m_castRay)
