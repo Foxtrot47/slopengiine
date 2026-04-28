@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake --version)",
+      "Bash(cl)",
+      "Bash(cmake -B build -A x64)",
+      "Bash(cmake --build build --config Debug)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit *)",
+      "Bash(start build/bin/Debug/SlopGame.exe)",
+      "Bash(powershell -Command \"\\(Get-Process SlopGame -ErrorAction SilentlyContinue\\).MainWindowTitle\")",
+      "Bash(taskkill //F //IM SlopGame.exe)",
+      "Bash(cmake -B build -A x64 -DCMAKE_TOOLCHAIN_FILE=\"E:/Software/VS_2026/VC/vcpkg/scripts/buildsystems/vcpkg.cmake\")",
+      "Bash(E:/Software/VS_2026/VC/vcpkg/vcpkg.exe x-update-baseline *)",
+      "Bash(E:/Software/VS_2026/VC/vcpkg/vcpkg.exe install *)",
+      "Bash(git lfs *)",
+      "Bash(vcpkg install *)",
+      "PowerShell(cmake *)",
+      "Bash(cmake *)"
+    ]
+  }
+}

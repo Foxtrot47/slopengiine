@@ -167,24 +167,6 @@ void ShadowMap::UpdateLightMatrix(DirectX::XMFLOAT3 lightDir, const AABB& sceneB
         minY - padXY, maxY + padXY,
         nearZ, farZ);
     m_lightViewProj = view * proj;
-
-    static bool s_logged = false;
-    if (!s_logged)
-    {
-        s_logged = true;
-        XMFLOAT4X4 m;
-        XMStoreFloat4x4(&m, m_lightViewProj);
-        float ex = XMVectorGetX(eye), ey = XMVectorGetY(eye), ez = XMVectorGetZ(eye);
-        SE_LOG_INFO("ShadowMap::UpdateLightMatrix — first call:");
-        SE_LOG_INFO("  dir=(%.3f,%.3f,%.3f)  centre=(%.3f,%.3f,%.3f)",
-            lightDir.x, lightDir.y, lightDir.z, centre.x, centre.y, centre.z);
-        SE_LOG_INFO("  eye=(%.1f,%.1f,%.1f)  viewBoundsXY=[%.1f,%.1f]x[%.1f,%.1f]  Z=[%.1f,%.1f]",
-            ex, ey, ez, minX, maxX, minY, maxY, nearZ, farZ);
-        SE_LOG_INFO("  LVP row0: %.4f %.4f %.4f %.4f", m._11, m._12, m._13, m._14);
-        SE_LOG_INFO("  LVP row1: %.4f %.4f %.4f %.4f", m._21, m._22, m._23, m._24);
-        SE_LOG_INFO("  LVP row2: %.4f %.4f %.4f %.4f", m._31, m._32, m._33, m._34);
-        SE_LOG_INFO("  LVP row3: %.4f %.4f %.4f %.4f", m._41, m._42, m._43, m._44);
-    }
 }
 
 void ShadowMap::BeginShadowPass(ID3D11DeviceContext* ctx)
