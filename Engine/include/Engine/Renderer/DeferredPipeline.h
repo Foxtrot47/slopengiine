@@ -65,7 +65,7 @@ private:
     {
         DirectX::XMFLOAT4X4 invViewProj;
         float screenW; float screenH;
-        float _pad[2];
+        float debugMode; float _pad;
     };
 
     struct RenderItem
@@ -79,6 +79,7 @@ private:
     const ShaderPermutation*       m_lightPerm = nullptr;
     ComPtr<ID3D11InputLayout>      m_geomLayout;
     ComPtr<ID3D11SamplerState>     m_sampler;
+    ComPtr<ID3D11SamplerState>     m_pointSampler;
     ConstantBuffer<TransformCBData>  m_transformCB;
     ConstantBuffer<MaterialCBData>   m_materialCB;
     ConstantBuffer<DeferredCBData>   m_deferredCB;

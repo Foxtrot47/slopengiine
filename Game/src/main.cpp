@@ -220,6 +220,16 @@ protected:
             vp.MaxDepth = 1.0f;
             ctx->RSSetViewports(1, &vp);
             m_skybox.Draw(ctx, view, proj);
+
+            // Forward overlay: draw ball + debug geometry on deferred scene RT
+            // (GBuffer depth DSV is still bound for correct depth testing)
+            m_shadowMap.BindForLitPass(ctx);
+            m_lights.BindPS(ctx, m_camera->eye, m_shadowMap.GetLightViewProj());
+            m_pipeline.Begin(ctx, view, proj);
+            m_pipeline.SetMaterialParams(ctx,
+                { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic, 0.0f);
+            m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
+            m_shadowMap.Unbind(ctx);
         }
         else
         {
@@ -253,8 +263,10 @@ protected:
             m_rayHitValid = false;
         }
 
-        if (m_showColliders && !m_useDeferred)
+        if (m_showColliders)
         {
+            if (m_useDeferred)
+                m_pipeline.Begin(ctx, view, proj);
             m_pipeline.DrawWireSphere(ctx, m_ballTransform->position, m_ballRadius,
                                       { 0.0f, 1.0f, 0.2f });
             m_pipeline.DrawWireBox(ctx, m_obbFloor.GetWorldMatrix(), { 1.0f, 0.85f, 0.1f });
@@ -274,8 +286,10 @@ protected:
             }
         }
 
-        if (m_rayHitValid && !m_useDeferred)
+        if (m_rayHitValid)
         {
+            if (m_useDeferred)
+                m_pipeline.Begin(ctx, view, proj);
             m_pipeline.DrawWireSphere(ctx, m_rayHit.point, 0.15f, { 1.0f, 1.0f, 1.0f });
             m_pipeline.DrawLine(ctx, m_rayHit.point,
                 { m_rayHit.point.x + m_rayHit.normal.x,

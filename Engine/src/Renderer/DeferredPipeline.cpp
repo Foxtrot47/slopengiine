@@ -41,6 +41,13 @@ bool DeferredPipeline::Init(ID3D11Device* device, AssetManager& /*assets*/,
     hr = device->CreateSamplerState(&sd, m_sampler.GetAddressOf());
     if (FAILED(hr)) { SE_LOG_ERROR("DeferredPipeline: sampler failed"); return false; }
 
+    // Point sampler for exact texel reads in lighting pass
+    D3D11_SAMPLER_DESC psd = {};
+    psd.Filter   = D3D11_FILTER_MIN_MAG_MIP_POINT;
+    psd.AddressU = psd.AddressV = psd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    hr = device->CreateSamplerState(&psd, m_pointSampler.GetAddressOf());
+    if (FAILED(hr)) { SE_LOG_ERROR("DeferredPipeline: point sampler failed"); return false; }
+
     if (!m_transformCB.Create(device)) return false;
     if (!m_materialCB.Create(device))  return false;
     if (!m_deferredCB.Create(device))  return false;
@@ -53,6 +60,7 @@ bool DeferredPipeline::Init(ID3D11Device* device, AssetManager& /*assets*/,
 void DeferredPipeline::Shutdown()
 {
     m_quad.Shutdown();
+    m_pointSampler.Reset();
     m_sampler.Reset();
     m_geomLayout.Reset();
     m_geomPerm  = nullptr;
@@ -163,7 +171,8 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
     XMStoreFloat4x4(&dc.invViewProj, invVP);
     dc.screenW = static_cast<float>(gb.GetWidth());
     dc.screenH = static_cast<float>(gb.GetHeight());
-    dc._pad[0] = dc._pad[1] = 0.0f;
+    dc.debugMode = 0.0f;
+    dc._pad = 0.0f;
     m_deferredCB.Update(ctx, dc);
     m_deferredCB.BindPS(ctx, 0);
     m_deferredCB.BindVS(ctx, 0);
@@ -171,9 +180,9 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
     // Set lighting pass shaders and draw fullscreen quad
     ctx->VSSetShader(m_lightPerm->vs.Get(), nullptr, 0);
     ctx->PSSetShader(m_lightPerm->ps.Get(), nullptr, 0);
+    ctx->PSSetSamplers(0, 1, m_pointSampler.GetAddressOf());
 
-    // Use point sampler for exact texel reads from G-buffer
-    m_quad.Draw(ctx);
+    m_quad.DrawGeometryOnly(ctx);
 
     // Unbind
     ID3D11ShaderResourceView* nullSRV = nullptr;
