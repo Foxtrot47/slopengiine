@@ -54,9 +54,9 @@ public:
         SE::Entity* camEnt       = m_scene.CreateEntity("Camera");
         m_camera                 = camEnt->AddComponent<SE::CameraComponent>();
         m_camera->farZ           = 5000.0f;
-        m_camCtrl.orbit.target   = { 0.0f, 4.0f, 0.0f };
-        m_camCtrl.orbit.distance = 22.0f;
-        m_camCtrl.orbit.pitchDeg = -15.0f;
+        m_camCtrl.freeFly.eye      = { 0.0f, 4.0f, -22.0f };
+        m_camCtrl.freeFly.yawDeg   = 0.0f;
+        m_camCtrl.freeFly.pitchDeg = 0.0f;
         m_camCtrl.Update(0.0f, GetInput(), *m_camera, GetWindow().GetHandle());
 
         SE::Entity* ballEnt        = m_scene.CreateEntity("PhysBall");
@@ -131,11 +131,11 @@ protected:
         SE::CameraController::Mode mode = m_camCtrl.GetMode();
 
         // Init character position when first entering FPS mode.
-        if (prevMode == SE::CameraController::Mode::Orbit &&
+        if (prevMode == SE::CameraController::Mode::FreeFly &&
             mode     == SE::CameraController::Mode::FPS)
         {
             m_cc.position = { m_camera->eye.x,
-                              m_floorY + 2.0f,
+                              m_camera->eye.y - m_cc.eyeHeight,
                               m_camera->eye.z };
             m_cc.velY = 0.0f;
         }
@@ -387,9 +387,9 @@ private:
         }
         else
         {
-            ImGui::Text("Orbit — LMB drag  wheel zoom");
-            ImGui::DragFloat3("Target",    &m_camCtrl.orbit.target.x,  0.1f);
-            ImGui::SliderFloat("Distance", &m_camCtrl.orbit.distance,  1.0f, 500.0f);
+            ImGui::Text("Free Fly — WASD/QE move  RMB look  Shift fast");
+            ImGui::SliderFloat("Move Speed",  &m_camCtrl.freeFly.moveSpeed,   1.0f, 200.0f);
+            ImGui::SliderFloat("Sensitivity", &m_camCtrl.freeFly.sensitivity, 0.05f, 0.5f);
         }
         ImGui::SliderFloat("Far Z", &m_camera->farZ, 100.0f, 20000.0f, "%.0f");
         ImGui::Text("Eye (%.1f, %.1f, %.1f)",
