@@ -21,6 +21,8 @@
 #include "Engine/Renderer/ShadowMap.h"
 #include "Engine/Renderer/RenderTarget.h"
 #include "Engine/Renderer/FullscreenQuad.h"
+#include "Engine/Renderer/GBuffer.h"
+#include "Engine/Renderer/DeferredPipeline.h"
 #include "Engine/Input/GamepadState.h"
 
 using namespace DirectX;
@@ -81,6 +83,15 @@ public:
         if (!m_sceneRT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight()))
             return false;
         if (!m_fsQuad.Init(device, GetShaders()))
+            return false;
+
+        // Deferred shading (M47)
+        if (!m_gbuffer.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight()))
+            return false;
+        if (!m_deferredPipeline.Init(device, GetAssets(), GetShaders()))
+            return false;
+        // Deferred scene RT (1x, no MSAA)
+        if (!m_deferredSceneRT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight()))
             return false;
 
         if (m_mesh)
@@ -185,18 +196,47 @@ protected:
             m_shadowMap.EndShadowPass(ctx);
         }
 
-        m_skybox.Draw(ctx, view, proj);
+        if (m_useDeferred)
+        {
+            // --- Deferred path (M47) ---
+            // Geometry pass → G-buffer
+            m_deferredPipeline.BeginGeometryPass(ctx, m_gbuffer, view, proj);
+            m_deferredPipeline.SetMaterialParams(ctx,
+                { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic);
+            m_deferredPipeline.SubmitMesh(*m_mesh, XMMatrixIdentity(), m_subMats);
+            m_deferredPipeline.FlushGeometry(ctx);
+            m_deferredPipeline.EndGeometryPass(ctx, m_gbuffer);
 
-        m_shadowMap.BindForLitPass(ctx);
-        m_lights.BindPS(ctx, m_camera->eye, m_shadowMap.GetLightViewProj());
-        m_pipeline.Begin(ctx, view, proj);
-        m_pipeline.SetMaterialParams(ctx,
-            { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic,
-            m_debugShadow ? 1.0f : 0.0f);
-        m_pipeline.SubmitMesh(*m_mesh, XMMatrixIdentity(), m_subMats);
-        m_pipeline.Flush(ctx);
-        m_shadowMap.Unbind(ctx);
-        m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
+            // Lighting pass → deferred scene RT
+            XMMATRIX viewProj = XMMatrixMultiply(view, proj);
+            m_deferredPipeline.LightingPass(ctx, m_gbuffer, m_deferredSceneRT,
+                m_lights, m_shadowMap, m_camera->eye, viewProj);
+
+            // Skybox composites on top using G-buffer depth
+            m_gbuffer.BindDepthForComposite(ctx, m_deferredSceneRT.GetRTV());
+            D3D11_VIEWPORT vp = {};
+            vp.Width  = static_cast<float>(m_deferredSceneRT.GetWidth());
+            vp.Height = static_cast<float>(m_deferredSceneRT.GetHeight());
+            vp.MaxDepth = 1.0f;
+            ctx->RSSetViewports(1, &vp);
+            m_skybox.Draw(ctx, view, proj);
+        }
+        else
+        {
+            // --- Forward path ---
+            m_skybox.Draw(ctx, view, proj);
+
+            m_shadowMap.BindForLitPass(ctx);
+            m_lights.BindPS(ctx, m_camera->eye, m_shadowMap.GetLightViewProj());
+            m_pipeline.Begin(ctx, view, proj);
+            m_pipeline.SetMaterialParams(ctx,
+                { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic,
+                m_debugShadow ? 1.0f : 0.0f);
+            m_pipeline.SubmitMesh(*m_mesh, XMMatrixIdentity(), m_subMats);
+            m_pipeline.Flush(ctx);
+            m_shadowMap.Unbind(ctx);
+            m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
+        }
 
         if (m_castRay)
         {
@@ -213,7 +253,7 @@ protected:
             m_rayHitValid = false;
         }
 
-        if (m_showColliders)
+        if (m_showColliders && !m_useDeferred)
         {
             m_pipeline.DrawWireSphere(ctx, m_ballTransform->position, m_ballRadius,
                                       { 0.0f, 1.0f, 0.2f });
@@ -222,10 +262,8 @@ protected:
             m_pipeline.DrawWireBox(ctx, m_obbB.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
             m_pipeline.DrawWireBox(ctx, m_obbC.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
 
-            // Character collision sphere — single sphere at bottom; that's all StepCharacter uses.
             XMFLOAT3 bottom = { m_cc.position.x, m_cc.position.y + m_cc.radius, m_cc.position.z };
             m_pipeline.DrawWireSphere(ctx, bottom, m_cc.radius, { 1.0f, 0.4f, 0.8f });
-            // Contact normal: magenta when grounded, dark when airborne.
             {
                 XMFLOAT3 col = m_cc.isGrounded ? XMFLOAT3{ 1.0f, 0.0f, 1.0f }
                                                : XMFLOAT3{ 0.25f, 0.0f, 0.25f };
@@ -236,7 +274,7 @@ protected:
             }
         }
 
-        if (m_rayHitValid)
+        if (m_rayHitValid && !m_useDeferred)
         {
             m_pipeline.DrawWireSphere(ctx, m_rayHit.point, 0.15f, { 1.0f, 1.0f, 1.0f });
             m_pipeline.DrawLine(ctx, m_rayHit.point,
@@ -251,16 +289,35 @@ protected:
     {
         auto* ctx = GetRenderer().GetContext();
 
-        // Recreate RT if window was resized
         uint32_t w = GetWindow().GetWidth(), h = GetWindow().GetHeight();
+
+        // Resize forward post-process RT if needed
         if (m_sceneRT.GetWidth() != w || m_sceneRT.GetHeight() != h)
         {
             m_sceneRT.Shutdown();
             m_sceneRT.Init(GetRenderer().GetDevice(), w, h);
         }
 
-        if (m_postProcess)
+        if (m_useDeferred)
         {
+            // Resize deferred resources if needed
+            if (m_gbuffer.GetWidth() != w || m_gbuffer.GetHeight() != h)
+            {
+                m_gbuffer.Shutdown();
+                m_gbuffer.Init(GetRenderer().GetDevice(), w, h);
+                m_deferredSceneRT.Shutdown();
+                m_deferredSceneRT.Init(GetRenderer().GetDevice(), w, h);
+            }
+
+            // Deferred: blit deferred scene RT → back buffer
+            GetRenderer().BindBackBuffer(ctx);
+            m_deferredSceneRT.BindPS(ctx, 0);
+            m_fsQuad.Draw(ctx);
+            m_deferredSceneRT.UnbindPS(ctx, 0);
+        }
+        else if (m_postProcess)
+        {
+            // Forward + post-process blit
             GetRenderer().ResolveScene(m_sceneRT.GetTexture());
             GetRenderer().BindBackBuffer(ctx);
             m_sceneRT.BindPS(ctx, 0);
@@ -391,6 +448,7 @@ private:
         ImGui::Text("Shadow Debug");
         ImGui::Checkbox("Show Shadow Factor", &m_debugShadow);
         ImGui::Checkbox("Post-Process Blit", &m_postProcess);
+        ImGui::Checkbox("Deferred Shading", &m_useDeferred);
         ImGui::Separator();
         ImGui::Text("Point Lights");
         ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
@@ -514,8 +572,12 @@ private:
     bool                         m_castRay           = false;
     bool                         m_debugShadow       = false;
     bool                         m_postProcess       = true;
+    bool                         m_useDeferred       = false;
     SE::RenderTarget             m_sceneRT;
     SE::FullscreenQuad           m_fsQuad;
+    SE::GBuffer                  m_gbuffer;
+    SE::DeferredPipeline         m_deferredPipeline;
+    SE::RenderTarget             m_deferredSceneRT;
     SE::PhysicsWorld::RaycastHit m_rayHit        = {};
     bool                         m_rayHitValid   = false;
 };
