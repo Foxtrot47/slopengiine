@@ -23,6 +23,7 @@
 #include "Engine/Renderer/FullscreenQuad.h"
 #include "Engine/Renderer/GBuffer.h"
 #include "Engine/Renderer/DeferredPipeline.h"
+#include "Engine/Renderer/SSAO.h"
 #include "Engine/Input/GamepadState.h"
 
 using namespace DirectX;
@@ -92,6 +93,10 @@ public:
             return false;
         // Deferred scene RT (1x, no MSAA)
         if (!m_deferredSceneRT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight()))
+            return false;
+
+        // SSAO (M49)
+        if (!m_ssao.Init(device, GetShaders(), GetWindow().GetWidth(), GetWindow().GetHeight()))
             return false;
 
         if (m_mesh)
@@ -207,10 +212,14 @@ protected:
             m_deferredPipeline.FlushGeometry(ctx);
             m_deferredPipeline.EndGeometryPass(ctx, m_gbuffer);
 
+            // SSAO pass (runs on G-buffer, produces AO texture)
+            m_ssao.Render(ctx, m_gbuffer, view, proj);
+            ID3D11ShaderResourceView* aoSRV = m_ssao.enabled ? m_ssao.GetAOSRV() : nullptr;
+
             // Lighting pass → deferred scene RT
             XMMATRIX viewProj = XMMatrixMultiply(view, proj);
             m_deferredPipeline.LightingPass(ctx, m_gbuffer, m_deferredSceneRT,
-                m_lights, m_shadowMap, m_camera->eye, viewProj);
+                m_lights, m_shadowMap, m_camera->eye, viewProj, aoSRV);
 
             // Skybox composites on top using G-buffer depth
             m_gbuffer.BindDepthForComposite(ctx, m_deferredSceneRT.GetRTV());
@@ -321,6 +330,7 @@ protected:
                 m_gbuffer.Init(GetRenderer().GetDevice(), w, h);
                 m_deferredSceneRT.Shutdown();
                 m_deferredSceneRT.Init(GetRenderer().GetDevice(), w, h);
+                m_ssao.Resize(GetRenderer().GetDevice(), w, h);
             }
 
             // Deferred: blit deferred scene RT → back buffer
@@ -463,6 +473,19 @@ private:
         ImGui::Checkbox("Show Shadow Factor", &m_debugShadow);
         ImGui::Checkbox("Post-Process Blit", &m_postProcess);
         ImGui::Checkbox("Deferred Shading", &m_useDeferred);
+        if (m_useDeferred)
+        {
+            ImGui::Separator();
+            ImGui::Text("SSAO");
+            ImGui::Checkbox("Enable SSAO", &m_ssao.enabled);
+            if (m_ssao.enabled)
+            {
+                ImGui::SliderFloat("AO Radius",    &m_ssao.radius,    0.05f, 2.0f, "%.3f");
+                ImGui::SliderFloat("AO Bias",      &m_ssao.bias,      0.001f, 0.1f, "%.4f");
+                ImGui::SliderFloat("AO Intensity",  &m_ssao.intensity, 0.5f, 5.0f, "%.2f");
+                ImGui::SliderInt("AO Samples",     &m_ssao.kernelSize, 4, 64);
+            }
+        }
         ImGui::Separator();
         ImGui::Text("Point Lights");
         ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
@@ -592,6 +615,7 @@ private:
     SE::GBuffer                  m_gbuffer;
     SE::DeferredPipeline         m_deferredPipeline;
     SE::RenderTarget             m_deferredSceneRT;
+    SE::SSAO                     m_ssao;
     SE::PhysicsWorld::RaycastHit m_rayHit        = {};
     bool                         m_rayHitValid   = false;
 };

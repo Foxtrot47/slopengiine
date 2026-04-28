@@ -45,7 +45,8 @@ public:
                       LightEnvironment& lights,
                       ShadowMap& shadow,
                       DirectX::XMFLOAT3 cameraPos,
-                      DirectX::XMMATRIX viewProj);
+                      DirectX::XMMATRIX viewProj,
+                      ID3D11ShaderResourceView* aoSRV = nullptr);
 
 private:
     struct TransformCBData
@@ -65,7 +66,7 @@ private:
     {
         DirectX::XMFLOAT4X4 invViewProj;
         float screenW; float screenH;
-        float debugMode; float _pad;
+        float debugMode; float enableSSAO;
     };
 
     struct RenderItem

@@ -2,6 +2,7 @@
 #include <cstdarg>
 #include <cstring>
 #include <ctime>
+#include <share.h>
 
 namespace SE {
 
@@ -40,7 +41,7 @@ void Logger::Initialize(const char* logFilePath)
 #endif
 
     if (logFilePath)
-        fopen_s(&m_logFile, logFilePath, "w");
+        m_logFile = _fsopen(logFilePath, "w", _SH_DENYNO);
 
     SE_LOG_INFO("Logger initialised");
 }
