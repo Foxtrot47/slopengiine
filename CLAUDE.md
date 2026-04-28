@@ -190,7 +190,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M46 | ~~Render-to-texture; fullscreen quad pass infrastructure~~ ✓ |
 | M47 | ~~Deferred shading (G-buffer: albedo, normal, depth, material)~~ ✓ |
 | M48 | Point light shadow maps (cube depth map, 1–2 closest lights) |
-| M49 | SSAO |
+| M49 | ~~SSAO~~ ✓ |
 | M50 | HDR + tone mapping (Reinhard + ACES) |
 | M51 | Bloom (dual Kawase blur) |
 | M52 | IBL — diffuse irradiance + specular (split-sum) |
@@ -314,3 +314,16 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 - `CameraController::UpdateFPS` is mouse-look only (RMB capture, yaw/pitch). WASD + jump + `StepCharacter` live in main.cpp. Camera eye = `cc.GetEyePosition()`, target = `eye + look(yaw, pitch)`.
 - Global gravity toggle in TestScene: `m_gravityEnabled` syncs `m_ballRigidBody->useGravity` and `m_cc.gravityEnabled` together.
 - Static OBBs drawn in cyan when `m_showColliders` is on.
+
+### SSAO (M49)
+- `SSAO` class in `Engine/Renderer/SSAO.h/.cpp`. Owned as value member in TestScene; renders between geometry pass and lighting pass.
+- 64-sample hemisphere kernel (biased toward origin with quadratic falloff), 4×4 tiled noise texture.
+- 3-pass pipeline: (1) SSAO generation → m_aoRT, (2) horizontal bilateral blur → m_blurRT, (3) vertical bilateral blur → m_aoRT. Result in `GetAOSRV()`.
+- All computation in view space: `ReconstructViewPos` via InvProjection, `LinearizeDepth` via `Projection._43 / (hwDepth - Projection._33)`.
+- World normals from G-buffer transformed to view space: `mul(normalWS, (float3x3)View)`.
+- Bilateral blur: 5-tap separable, depth + normal weighted edge preservation.
+- Render targets: R8_UNORM (single channel AO). Resized alongside GBuffer in deferred resize handler.
+- `DeferredLighting.hlsl` samples AO at t5, multiplies ambient term only: `ao * AmbientColor * albedo`. `EnableSSAO` flag avoids null SRV sampling.
+- `SSAOParamsCB` (1248 bytes): Projection + InvProjection + View + samples[64] + screen/noise params.
+- ImGui controls: enable toggle, radius, bias, intensity, kernel size.
+- Logger now uses `_fsopen` with `_SH_DENYNO` for shared read access (allows log reading while app runs).

@@ -145,7 +145,8 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
                                      LightEnvironment& lights,
                                      ShadowMap& shadow,
                                      XMFLOAT3 cameraPos,
-                                     XMMATRIX viewProj)
+                                     XMMATRIX viewProj,
+                                     ID3D11ShaderResourceView* aoSRV)
 {
     // Bind scene RT as output
     const float clearBlack[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -157,6 +158,10 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
     // Bind shadow map to t4 (shifted from forward's t3)
     ID3D11ShaderResourceView* shadowSRV = shadow.GetSRV();
     ctx->PSSetShaderResources(4, 1, &shadowSRV);
+
+    // Bind AO texture at t5 (if available)
+    if (aoSRV)
+        ctx->PSSetShaderResources(5, 1, &aoSRV);
 
     // Bind shadow comparison sampler to s1
     ID3D11SamplerState* shadowSamp = shadow.GetSampler();
@@ -172,7 +177,7 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
     dc.screenW = static_cast<float>(gb.GetWidth());
     dc.screenH = static_cast<float>(gb.GetHeight());
     dc.debugMode = 0.0f;
-    dc._pad = 0.0f;
+    dc.enableSSAO = aoSRV ? 1.0f : 0.0f;
     m_deferredCB.Update(ctx, dc);
     m_deferredCB.BindPS(ctx, 0);
     m_deferredCB.BindVS(ctx, 0);
@@ -185,8 +190,8 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
     m_quad.DrawGeometryOnly(ctx);
 
     // Unbind
-    ID3D11ShaderResourceView* nullSRV = nullptr;
-    ctx->PSSetShaderResources(4, 1, &nullSRV);
+    ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
+    ctx->PSSetShaderResources(4, 2, nullSRVs);
     gb.UnbindLighting(ctx);
 
     sceneRT.End(ctx);

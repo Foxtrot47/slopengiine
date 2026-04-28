@@ -29,7 +29,8 @@ public:
                                 ID3D11RenderTargetView* sceneRTV) const;
 
     ID3D11DepthStencilView*   GetDSV() const { return m_dsv.Get(); }
-    ID3D11ShaderResourceView* GetDepthSRV() const { return m_depthSRV.Get(); }
+    ID3D11ShaderResourceView* GetDepthSRV()  const { return m_depthSRV.Get(); }
+    ID3D11ShaderResourceView* GetNormalSRV() const { return m_colorSRV[1].Get(); }
     uint32_t GetWidth()  const { return m_width; }
     uint32_t GetHeight() const { return m_height; }
 

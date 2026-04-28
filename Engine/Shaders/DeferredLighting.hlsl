@@ -7,6 +7,7 @@ Texture2D    g_normal   : register(t1);
 Texture2D    g_material : register(t2);
 Texture2D    g_depth    : register(t3);
 Texture2D    g_shadow   : register(t4);
+Texture2D    g_ao       : register(t5);
 SamplerState g_sampler  : register(s0);
 SamplerComparisonState g_shadowSampler : register(s1);
 
@@ -38,7 +39,8 @@ cbuffer DeferredCB : register(b0)
 {
     row_major matrix InvViewProj;
     float2           ScreenSize;
-    float2           _dpad;
+    float            DebugMode;
+    float            EnableSSAO;
 };
 
 struct VSOutput
@@ -115,13 +117,18 @@ float4 PS_Main(VSOutput input) : SV_TARGET
         }
     }
 
+    // SSAO — sample AO factor
+    float ao = 1.0f;
+    if (EnableSSAO > 0.5f)
+        ao = g_ao.Sample(g_sampler, input.uv).r;
+
     // Directional light
     float3 L    = normalize(LightDir);
     float3 H    = normalize(L + V);
     float  diff = max(dot(N, L), 0.0f);
     float  spec = (diff > 0.0f) ? pow(max(dot(N, H), 0.0f), pixShine) * specMask : 0.0f;
 
-    float3 color = AmbientColor * albedo
+    float3 color = ao * AmbientColor * albedo
                  + shadow * LightColor * diff * kDiff * albedo
                  + shadow * LightColor * spec * F0;
 
