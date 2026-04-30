@@ -16,6 +16,9 @@ public:
     // Bind the passthrough shader + point sampler, then draw quad.
     // Caller must bind the source SRV to t0 before calling.
     void Draw(ID3D11DeviceContext* ctx);
+    // Draw using a specific permutation instead of the default one.
+    // Caller must bind the source SRV to t0 before calling.
+    void Draw(ID3D11DeviceContext* ctx, const ShaderPermutation* perm);
     void DrawGeometryOnly(ID3D11DeviceContext* ctx);
 
 private:

@@ -98,4 +98,19 @@ void FullscreenQuad::DrawGeometryOnly(ID3D11DeviceContext* ctx)
     ctx->DrawIndexed(6, 0, 0);
 }
 
+void FullscreenQuad::Draw(ID3D11DeviceContext* ctx, const ShaderPermutation* perm)
+{
+    ctx->IASetInputLayout(m_layout.Get());
+    UINT stride = sizeof(FSQuadVertex), offset = 0;
+    ctx->IASetVertexBuffers(0, 1, m_vb.GetAddressOf(), &stride, &offset);
+    ctx->IASetIndexBuffer(m_ib.Get(), DXGI_FORMAT_R16_UINT, 0);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    ctx->VSSetShader(perm->vs.Get(), nullptr, 0);
+    ctx->PSSetShader(perm->ps.Get(), nullptr, 0);
+    ctx->PSSetSamplers(0, 1, m_pointSampler.GetAddressOf());
+
+    ctx->DrawIndexed(6, 0, 0);
+}
+
 } // namespace SE
