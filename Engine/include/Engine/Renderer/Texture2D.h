@@ -10,8 +10,11 @@ namespace SE {
 class Texture2D
 {
 public:
-    // Load a PNG / JPG / BMP / TIFF from disk via WIC. Generates a full mip chain.
+    // Load PNG/JPG/BMP/TIFF via WIC. Generates a full mip chain.
     bool LoadFromFile(ID3D11Device* device, ID3D11DeviceContext* ctx, const wchar_t* path);
+
+    // Load a DDS file via DirectXTex (BC1-BC7, HDR, cubemaps). Uses embedded mips.
+    bool LoadFromDDS(ID3D11Device* device, const wchar_t* path);
 
     // Create directly from a raw RGBA8 pixel buffer. Generates a full mip chain.
     bool CreateFromMemory(ID3D11Device* device, ID3D11DeviceContext* ctx,
