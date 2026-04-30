@@ -8,8 +8,12 @@ Texture2D    g_material : register(t2);
 Texture2D    g_depth    : register(t3);
 Texture2D    g_shadow   : register(t4);
 Texture2D    g_ao       : register(t5);
-SamplerState g_sampler  : register(s0);
-SamplerComparisonState g_shadowSampler : register(s1);
+// Point shadow cube maps (up to 2 shadow-casting lights at indices 0..1)
+TextureCube<float> g_pointShadow0 : register(t6);
+TextureCube<float> g_pointShadow1 : register(t7);
+SamplerState               g_sampler       : register(s0);
+SamplerComparisonState     g_shadowSampler : register(s1);
+SamplerState               g_cubeSampler   : register(s2); // linear-clamp for point shadows
 
 cbuffer LightCB : register(b1)
 {
@@ -41,6 +45,9 @@ cbuffer DeferredCB : register(b0)
     float2           ScreenSize;
     float            DebugMode;
     float            EnableSSAO;
+    int              NumPointShadowCasters; // first N PointLights cast shadows via g_pointShadow0/1
+    float            PointShadowBias;
+    float2           _dcpad;
 };
 
 struct VSOutput
@@ -148,7 +155,18 @@ float4 PS_Main(VSOutput input) : SV_TARGET
         float  pd = max(dot(N, PL), 0.0f);
         float  ps = (pd > 0.0f) ? pow(max(dot(N, PH), 0.0f), pixShine) * specMask : 0.0f;
 
-        color += PointLights[i].Color * atten * (pd * kDiff * albedo + ps * F0);
+        // Point shadow (cube map comparison, linear depth)
+        float pointShadow = 1.0f;
+        if (i < NumPointShadowCasters)
+        {
+            float3 L2F        = worldPos - PointLights[i].Position;
+            float  shadowDist = length(L2F) / PointLights[i].Radius;
+            float  closest    = (i == 0) ? g_pointShadow0.Sample(g_cubeSampler, L2F).r
+                                         : g_pointShadow1.Sample(g_cubeSampler, L2F).r;
+            pointShadow = (shadowDist > closest + PointShadowBias) ? 0.0f : 1.0f;
+        }
+
+        color += pointShadow * PointLights[i].Color * atten * (pd * kDiff * albedo + ps * F0);
     }
 
     // Debug: show NdotL as greyscale when DebugLightMode > 1.5

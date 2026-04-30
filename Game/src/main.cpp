@@ -23,7 +23,9 @@
 #include "Engine/Renderer/FullscreenQuad.h"
 #include "Engine/Renderer/GBuffer.h"
 #include "Engine/Renderer/DeferredPipeline.h"
+#include "Engine/Renderer/ToneMap.h"
 #include "Engine/Renderer/SSAO.h"
+#include "Engine/Renderer/PointShadowMap.h"
 #include "Engine/Input/GamepadState.h"
 
 using namespace DirectX;
@@ -51,7 +53,11 @@ public:
         m_lights.elevDeg        = 63.0f;
         m_lights.azimDeg        = -134.6f;
         m_lights.ambientColor[0] = m_lights.ambientColor[1] = m_lights.ambientColor[2] = 70.0f / 255.0f;
-        m_lights.numLights      = 0;
+        // One default point light for M48 point shadow testing
+        m_lights.numLights                  = 1;
+        m_lights.lights[0].position         = { -440.0f, 130.0f, 65.0f };
+        m_lights.lights[0].color            = { 1.0f, 0.9f, 0.7f };
+        m_lights.lights[0].radius           = 100.0f;
 
         SE::Entity* camEnt       = m_scene.CreateEntity("Camera");
         m_camera                 = camEnt->AddComponent<SE::CameraComponent>();
@@ -89,13 +95,21 @@ public:
             return false;
         if (!m_deferredPipeline.Init(device, GetAssets(), GetShaders()))
             return false;
-        // Deferred scene RT (1x, no MSAA)
-        if (!m_deferredSceneRT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight()))
+        // Deferred scene RT — HDR (R16F) so tone mapping has full range
+        if (!m_deferredSceneRT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight(),
+                DXGI_FORMAT_R16G16B16A16_FLOAT))
             return false;
 
         // SSAO (M49)
         if (!m_ssao.Init(device, GetShaders(), GetWindow().GetWidth(), GetWindow().GetHeight()))
             return false;
+
+        // Tone mapping (M50)
+        if (!m_toneMap.Init(device, GetShaders())) return false;
+
+        // Point shadow maps (M48) — 2 slots, 256x256 per cube face
+        for (int i = 0; i < 2; ++i)
+            if (!m_pointShadowMaps[i].Init(device, GetShaders(), 256)) return false;
 
         if (m_mesh)
         {
@@ -206,6 +220,22 @@ protected:
             m_shadowMap.EndShadowPass(ctx);
         }
 
+        // Point shadow passes (M48) — only when deferred path is active
+        if (m_useDeferred && m_numPointShadowCasters > 0)
+        {
+            int numCasters = min(m_numPointShadowCasters, m_lights.numLights);
+            for (int li = 0; li < numCasters; ++li)
+            {
+                auto& light = m_lights.lights[li];
+                for (int face = 0; face < 6; ++face)
+                {
+                    m_pointShadowMaps[li].BeginFace(ctx, face, light.position, light.radius);
+                    if (m_mesh) m_pointShadowMaps[li].DrawMesh(ctx, *m_mesh, m_meshWorld);
+                    m_pointShadowMaps[li].EndFace(ctx);
+                }
+            }
+        }
+
         if (m_useDeferred)
         {
             // --- Deferred path (M47) ---
@@ -223,8 +253,13 @@ protected:
 
             // Lighting pass → deferred scene RT
             XMMATRIX viewProj = XMMatrixMultiply(view, proj);
+            int numPtShadows = min(m_numPointShadowCasters, m_lights.numLights);
+            ID3D11ShaderResourceView* ptSRVs[2] = { nullptr, nullptr };
+            for (int i = 0; i < numPtShadows; ++i)
+                ptSRVs[i] = m_pointShadowMaps[i].GetSRV();
             m_deferredPipeline.LightingPass(ctx, m_gbuffer, m_deferredSceneRT,
-                m_lights, m_shadowMap, m_camera->eye, viewProj, aoSRV);
+                m_lights, m_shadowMap, m_camera->eye, viewProj, aoSRV,
+                ptSRVs, numPtShadows, m_pointShadowBias);
 
             // Skybox composites on top using G-buffer depth
             m_gbuffer.BindDepthForComposite(ctx, m_deferredSceneRT.GetRTV());
@@ -331,15 +366,14 @@ protected:
                 m_gbuffer.Shutdown();
                 m_gbuffer.Init(GetRenderer().GetDevice(), w, h);
                 m_deferredSceneRT.Shutdown();
-                m_deferredSceneRT.Init(GetRenderer().GetDevice(), w, h);
+                m_deferredSceneRT.Init(GetRenderer().GetDevice(), w, h,
+                    DXGI_FORMAT_R16G16B16A16_FLOAT);
                 m_ssao.Resize(GetRenderer().GetDevice(), w, h);
             }
 
-            // Deferred: blit deferred scene RT → back buffer
+            // Tone map deferred HDR scene → back buffer
             GetRenderer().BindBackBuffer(ctx);
-                            m_deferredSceneRT.BindPS(ctx, 0);
-                m_fsQuad.Draw(ctx);
-                m_deferredSceneRT.UnbindPS(ctx, 0);
+            m_toneMap.Apply(ctx, m_deferredSceneRT.GetSRV(), w, h);
         }
         else if (m_postProcess)
         {
@@ -488,14 +522,28 @@ private:
             ImGui::Checkbox("Enable SSAO", &m_ssao.enabled);
             if (m_ssao.enabled)
             {
-                ImGui::SliderFloat("AO Radius",    &m_ssao.radius,    0.05f, 2.0f, "%.3f");
+                ImGui::SliderFloat("AO Radius",    &m_ssao.radius,    0.05f, 5.0f, "%.3f");
                 ImGui::SliderFloat("AO Bias",      &m_ssao.bias,      0.001f, 0.1f, "%.4f");
                 ImGui::SliderFloat("AO Intensity",  &m_ssao.intensity, 0.5f, 5.0f, "%.2f");
+                ImGui::SliderFloat("AO Min",        &m_ssao.minAO,     0.0f, 0.5f, "%.2f");
                 ImGui::SliderInt("AO Samples",     &m_ssao.kernelSize, 4, 64);
             }
+            ImGui::Separator();
+            ImGui::Text("Tone Mapping");
+            ImGui::SliderFloat("Exposure",     &m_toneMap.exposure, 0.01f, 10.0f, "%.2f");
+            int op = static_cast<int>(m_toneMap.op);
+            ImGui::RadioButton("Reinhard", &op, 0); ImGui::SameLine();
+            ImGui::RadioButton("ACES",     &op, 1);
+            m_toneMap.op = static_cast<SE::ToneMap::Operator>(op);
+            ImGui::Checkbox("Gamma Correct", &m_toneMap.gammaCorrect);
+            ImGui::TextDisabled("(gamma needs texture linearisation — M52)");
         }
         ImGui::Separator();
-        ImGui::Text("Point Lights");
+        ImGui::Text("Point Shadows (M48)");
+        ImGui::SliderInt("Shadow Casters", &m_numPointShadowCasters, 0, 2);
+        ImGui::SliderFloat("Shadow Bias",  &m_pointShadowBias, 0.001f, 0.1f, "%.4f");
+        ImGui::TextDisabled("Shadow casters use lights[0..N-1]");
+        ImGui::Separator();
         ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
         for (int i = 0; i < m_lights.numLights; ++i)
         {
@@ -504,9 +552,9 @@ private:
             sprintf_s(label, "Point Light %d", i + 1);
             if (ImGui::CollapsingHeader(label))
             {
-                ImGui::DragFloat3("Position", &m_lights.lights[i].position.x, 0.1f, -30.0f, 30.0f);
+                ImGui::DragFloat3("Position", &m_lights.lights[i].position.x, 1.0f, -1000.0f, 1000.0f);
                 ImGui::ColorEdit3("Color",    &m_lights.lights[i].color.x);
-                ImGui::SliderFloat("Radius",  &m_lights.lights[i].radius, 0.5f, 50.0f);
+                ImGui::SliderFloat("Radius",  &m_lights.lights[i].radius, 0.5f, 500.0f);
             }
             ImGui::PopID();
         }
@@ -624,6 +672,10 @@ private:
     SE::DeferredPipeline         m_deferredPipeline;
     SE::RenderTarget             m_deferredSceneRT;
     SE::SSAO                     m_ssao;
+    SE::ToneMap                  m_toneMap;
+    SE::PointShadowMap           m_pointShadowMaps[2];
+    int                          m_numPointShadowCasters = 1;
+    float                        m_pointShadowBias       = 0.015f;
     SE::PhysicsWorld::RaycastHit m_rayHit        = {};
     bool                         m_rayHitValid   = false;
 };

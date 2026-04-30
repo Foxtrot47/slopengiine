@@ -19,6 +19,8 @@ cbuffer SSAOParams : register(b0)
     float  Bias;
     float  Intensity;
     int    KernelSize;
+    float  MinAO;
+    float3 _pad2;
 };
 
 struct VSOutput
@@ -93,5 +95,6 @@ float4 PS_Main(VSOutput input) : SV_TARGET
 
     float ao = 1.0f - (occlusion / float(KernelSize));
     ao = pow(saturate(ao), Intensity);
+    ao = max(ao, MinAO);
     return float4(ao, ao, ao, 1.0f);
 }

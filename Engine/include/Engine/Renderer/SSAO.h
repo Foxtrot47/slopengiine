@@ -28,9 +28,10 @@ public:
     ID3D11ShaderResourceView* GetAOSRV() const { return m_aoRT.GetSRV(); }
 
     // Tweakable parameters
-    float radius    = 0.5f;
+    float radius    = 1.0f;
     float bias      = 0.025f;
-    float intensity = 1.5f;
+    float intensity = 1.0f;
+    float minAO     = 0.2f;  // floor — prevents full ambient occlusion outdoors
     int   kernelSize = 32;
     bool  enabled    = true;
 
@@ -50,6 +51,8 @@ private:
         float bias;
         float intensity;
         int   kernelSize;
+        float minAO;
+        float _pad2[3];
     };
 
     struct BlurParamsCB
