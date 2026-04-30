@@ -88,13 +88,6 @@ float3 F_Schlick(float cosTheta, float3 F0)
     return F0 + (1.0f - F0) * pow(saturate(1.0f - cosTheta), 5.0f);
 }
 
-// Roughness-aware Fresnel for IBL energy split
-float3 F_SchlickRoughness(float cosTheta, float3 F0, float roughness)
-{
-    float3 oneMinusR = float3(1.0f - roughness, 1.0f - roughness, 1.0f - roughness);
-    return F0 + (max(oneMinusR, F0) - F0) * pow(saturate(1.0f - cosTheta), 5.0f);
-}
-
 // Full Cook-Torrance specular BRDF + Lambertian diffuse, returns Lo contribution.
 // radiance: light colour × attenuation (pre-multiplied by caller)
 float3 PBR_DirectLight(float3 N, float3 V, float3 L,
@@ -167,7 +160,8 @@ float4 PS_Main(VSOutput input) : SV_TARGET
         float4 shadowClip = mul(float4(worldPos, 1.0f), LightViewProj);
         float3 shadowNDC  = shadowClip.xyz / shadowClip.w;
         float2 shadowUV   = float2(shadowNDC.x * 0.5f + 0.5f, -shadowNDC.y * 0.5f + 0.5f);
-        float  depthRef   = shadowNDC.z;
+        float  slopeBias  = 0.005f * tan(acos(saturate(dot(N, normalize(LightDir)))));
+        float  depthRef   = shadowNDC.z - clamp(slopeBias, 0.0f, 0.01f);
 
         if (saturate(shadowUV.x) == shadowUV.x &&
             saturate(shadowUV.y) == shadowUV.y &&
@@ -200,22 +194,25 @@ float4 PS_Main(VSOutput input) : SV_TARGET
     float3 color;
     if (EnableIBL > 0.5f)
     {
-        // Split-sum IBL ambient
-        float3 kS_ibl = F_SchlickRoughness(NdotV, F0, roughness);
-        float3 kD_ibl = (1.0f - kS_ibl) * (1.0f - metallic);
-
-        // Diffuse: irradiance cubemap sampled with N
-        float3 irradiance = g_irradiance.Sample(g_cubeSampler, N).rgb;
-        float3 diffuseIBL = kD_ibl * irradiance * albedo;
-
         // Specular: pre-filtered env map + BRDF LUT
         float3 R = reflect(-V, N);
         float3 prefilteredColor = g_prefiltered.SampleLevel(g_cubeSampler, R,
             roughness * PrefilteredMipLevels).rgb;
-        float2 envBRDF = g_brdfLut.SampleLevel(g_cubeSampler, float2(NdotV, roughness), 0).rg;
+        float2 envBRDF     = g_brdfLut.SampleLevel(g_cubeSampler, float2(NdotV, roughness), 0).rg;
         float3 specularIBL = prefilteredColor * (F0 * envBRDF.x + envBRDF.y);
 
-        color = ao * IBLIntensity * (diffuseIBL + specularIBL);
+        // kD derived from the LUT's actual specular output for correct energy conservation.
+        // F_SchlickRoughness is only an approximation of that integral; using the LUT value
+        // avoids the mismatch that causes diffuse+specular to exceed incoming irradiance.
+        float3 kS_actual = F0 * envBRDF.x + envBRDF.y;
+        float3 kD_ibl    = (1.0f - kS_actual) * (1.0f - metallic);
+
+        // Diffuse: irradiance cubemap sampled with N.
+        // AO is a hemisphere occlusion term — only attenuates diffuse, not specular.
+        float3 irradiance = g_irradiance.Sample(g_cubeSampler, N).rgb;
+        float3 diffuseIBL = kD_ibl * irradiance * albedo;
+
+        color = IBLIntensity * (ao * diffuseIBL + specularIBL);
     }
     else
     {
