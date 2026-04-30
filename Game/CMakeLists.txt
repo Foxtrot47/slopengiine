@@ -20,7 +20,7 @@ set_target_properties(Game PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:Game>"
 )
 
-# Engine-internal shaders — part of the engine, not user assets.
+# Engine HLSL shaders
 add_custom_command(TARGET Game POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/Engine/Shaders"
@@ -28,10 +28,9 @@ add_custom_command(TARGET Game POST_BUILD
     COMMENT "Copying Engine shaders"
 )
 
-# User-facing runtime assets (textures, models, audio, etc.)
+# Bistro root files
 add_custom_command(TARGET Game POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/Assets"
-        "$<TARGET_FILE_DIR:Game>/Assets"
+    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -Command
+        "New-Item -Force -ItemType Directory '$<TARGET_FILE_DIR:Game>/Assets/Bistro' | Out-Null; Get-ChildItem -Path '${CMAKE_SOURCE_DIR}/Assets/Bistro' -File | Copy-Item -Destination '$<TARGET_FILE_DIR:Game>/Assets/Bistro' -Force"
     COMMENT "Copying Assets"
 )
