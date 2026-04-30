@@ -177,6 +177,7 @@ void SSAO::Render(ID3D11DeviceContext* ctx, GBuffer& gb,
         params.bias       = bias;
         params.intensity  = intensity;
         params.kernelSize = clamped;
+        params.minAO      = minAO;
         m_paramsCB.Update(ctx, params);
         m_paramsCB.BindPS(ctx, 0);
         m_paramsCB.BindVS(ctx, 0);

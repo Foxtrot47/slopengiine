@@ -48,6 +48,14 @@ bool DeferredPipeline::Init(ID3D11Device* device, AssetManager& /*assets*/,
     hr = device->CreateSamplerState(&psd, m_pointSampler.GetAddressOf());
     if (FAILED(hr)) { SE_LOG_ERROR("DeferredPipeline: point sampler failed"); return false; }
 
+    // Linear-clamp sampler for point shadow cube map lookups (s2)
+    D3D11_SAMPLER_DESC csd = {};
+    csd.Filter   = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    csd.AddressU = csd.AddressV = csd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    csd.MaxLOD   = D3D11_FLOAT32_MAX;
+    hr = device->CreateSamplerState(&csd, m_cubeSampler.GetAddressOf());
+    if (FAILED(hr)) { SE_LOG_ERROR("DeferredPipeline: cube sampler failed"); return false; }
+
     if (!m_transformCB.Create(device)) return false;
     if (!m_materialCB.Create(device))  return false;
     if (!m_deferredCB.Create(device))  return false;
@@ -60,6 +68,7 @@ bool DeferredPipeline::Init(ID3D11Device* device, AssetManager& /*assets*/,
 void DeferredPipeline::Shutdown()
 {
     m_quad.Shutdown();
+    m_cubeSampler.Reset();
     m_pointSampler.Reset();
     m_sampler.Reset();
     m_geomLayout.Reset();
@@ -146,7 +155,10 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
                                      ShadowMap& shadow,
                                      XMFLOAT3 cameraPos,
                                      XMMATRIX viewProj,
-                                     ID3D11ShaderResourceView* aoSRV)
+                                     ID3D11ShaderResourceView* aoSRV,
+                                     ID3D11ShaderResourceView* const* ptShadowSRVs,
+                                     int numPtShadowCasters,
+                                     float ptShadowBias)
 {
     // Bind scene RT as output
     const float clearBlack[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -163,9 +175,14 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
     if (aoSRV)
         ctx->PSSetShaderResources(5, 1, &aoSRV);
 
-    // Bind shadow comparison sampler to s1
+    // Bind point shadow cube maps at t6..t7
+    if (ptShadowSRVs && numPtShadowCasters > 0)
+        ctx->PSSetShaderResources(6, numPtShadowCasters, ptShadowSRVs);
+
+    // Bind shadow comparison sampler to s1, cube sampler to s2
     ID3D11SamplerState* shadowSamp = shadow.GetSampler();
     ctx->PSSetSamplers(1, 1, &shadowSamp);
+    ctx->PSSetSamplers(2, 1, m_cubeSampler.GetAddressOf());
 
     // Bind light constant buffers (b1, b2) — reuse LightEnvironment
     lights.BindPS(ctx, cameraPos, shadow.GetLightViewProj());
@@ -174,10 +191,13 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
     DeferredCBData dc;
     XMMATRIX invVP = XMMatrixInverse(nullptr, viewProj);
     XMStoreFloat4x4(&dc.invViewProj, invVP);
-    dc.screenW = static_cast<float>(gb.GetWidth());
-    dc.screenH = static_cast<float>(gb.GetHeight());
-    dc.debugMode = 0.0f;
-    dc.enableSSAO = aoSRV ? 1.0f : 0.0f;
+    dc.screenW                = static_cast<float>(gb.GetWidth());
+    dc.screenH                = static_cast<float>(gb.GetHeight());
+    dc.debugMode              = 0.0f;
+    dc.enableSSAO             = aoSRV ? 1.0f : 0.0f;
+    dc.numPointShadowCasters  = numPtShadowCasters;
+    dc.pointShadowBias        = ptShadowBias;
+    dc._dcpad[0] = dc._dcpad[1] = 0.0f;
     m_deferredCB.Update(ctx, dc);
     m_deferredCB.BindPS(ctx, 0);
     m_deferredCB.BindVS(ctx, 0);
@@ -189,9 +209,9 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
 
     m_quad.DrawGeometryOnly(ctx);
 
-    // Unbind
-    ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
-    ctx->PSSetShaderResources(4, 2, nullSRVs);
+    // Unbind all G-buffer + shadow + AO + point shadow SRVs
+    ID3D11ShaderResourceView* nullSRVs[4] = { nullptr, nullptr, nullptr, nullptr };
+    ctx->PSSetShaderResources(4, 4, nullSRVs);  // t4..t7
     gb.UnbindLighting(ctx);
 
     sceneRT.End(ctx);
