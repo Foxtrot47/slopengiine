@@ -3,8 +3,7 @@
 #include "Engine/Core/Logger.h"
 #include <d3dcompiler.h>
 #include <windows.h>
-
-#include <tinyexr.h>
+#include <DirectXTex.h>
 
 namespace SE {
 
@@ -72,50 +71,30 @@ bool SkyboxRenderer::Init(ID3D11Device* device, RenderStateCache& cache, ShaderL
 
 bool SkyboxRenderer::LoadPanorama(ID3D11Device* device, const wchar_t* path)
 {
-    char pathA[MAX_PATH];
-    WideCharToMultiByte(CP_UTF8, 0, path, -1, pathA, MAX_PATH, nullptr, nullptr);
-
-    float* rgba   = nullptr;
-    int    width  = 0, height = 0;
-    const char* err = nullptr;
-    int ret = LoadEXR(&rgba, &width, &height, pathA, &err);
-    if (ret != TINYEXR_SUCCESS)
-    {
-        SE_LOG_ERROR("SkyboxRenderer: LoadEXR failed — %s", err ? err : "unknown error");
-        FreeEXRErrorMessage(err);
-        return false;
-    }
-
-    D3D11_TEXTURE2D_DESC td = {};
-    td.Width          = static_cast<UINT>(width);
-    td.Height         = static_cast<UINT>(height);
-    td.MipLevels      = 1;
-    td.ArraySize      = 1;
-    td.Format         = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    td.SampleDesc     = { 1, 0 };
-    td.Usage          = D3D11_USAGE_DEFAULT;
-    td.BindFlags      = D3D11_BIND_SHADER_RESOURCE;
-
-    D3D11_SUBRESOURCE_DATA initData = {};
-    initData.pSysMem     = rgba;
-    initData.SysMemPitch = static_cast<UINT>(width) * 4 * sizeof(float);
-
-    HRESULT hr = device->CreateTexture2D(&td, &initData, &m_panoramaTex);
-    free(rgba);
+    DirectX::ScratchImage image;
+    HRESULT hr = DirectX::LoadFromDDSFile(path, DirectX::DDS_FLAGS_NONE, nullptr, image);
     if (FAILED(hr))
     {
-        SE_LOG_ERROR("SkyboxRenderer: CreateTexture2D failed 0x%08X", hr);
+        char pathA[MAX_PATH];
+        WideCharToMultiByte(CP_UTF8, 0, path, -1, pathA, MAX_PATH, nullptr, nullptr);
+        SE_LOG_ERROR("SkyboxRenderer: LoadFromDDSFile failed '%s': 0x%08X", pathA, hr);
         return false;
     }
 
-    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Format              = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    srvDesc.ViewDimension       = D3D11_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MipLevels = 1;
-    SE_HR(device->CreateShaderResourceView(m_panoramaTex.Get(), &srvDesc, &m_panoramaSRV));
+    const DirectX::TexMetadata& meta = image.GetMetadata();
+    hr = DirectX::CreateShaderResourceViewEx(
+        device,
+        image.GetImages(), image.GetImageCount(), meta,
+        D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0,
+        DirectX::CREATETEX_DEFAULT,
+        m_panoramaSRV.ReleaseAndGetAddressOf());
+    if (FAILED(hr))
+    {
+        SE_LOG_ERROR("SkyboxRenderer: CreateShaderResourceView failed: 0x%08X", hr);
+        return false;
+    }
 
-    SE_LOG_INFO("SkyboxRenderer: panorama loaded %dx%d (%.1f MB)",
-                width, height, (float)(width * height * 16) / (1024 * 1024));
+    SE_LOG_INFO("SkyboxRenderer: panorama loaded %zux%zu BC6H", meta.width, meta.height);
     return true;
 }
 
