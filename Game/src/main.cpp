@@ -221,9 +221,11 @@ protected:
         }
 
         // Point shadow passes (M48) — only when deferred path is active
-        if (m_useDeferred && m_numPointShadowCasters > 0)
+        if (m_useDeferred)
         {
-            int numCasters = min(m_numPointShadowCasters, m_lights.numLights);
+            int numCasters = 0;
+            for (int i = 0; i < 2 && i < m_lights.numLights; ++i)
+                if (m_lightCastsShadow[i]) numCasters = i + 1; else break;
             for (int li = 0; li < numCasters; ++li)
             {
                 auto& light = m_lights.lights[li];
@@ -253,7 +255,9 @@ protected:
 
             // Lighting pass → deferred scene RT
             XMMATRIX viewProj = XMMatrixMultiply(view, proj);
-            int numPtShadows = min(m_numPointShadowCasters, m_lights.numLights);
+            int numPtShadows = 0;
+            for (int i = 0; i < 2 && i < m_lights.numLights; ++i)
+                if (m_lightCastsShadow[i]) numPtShadows = i + 1; else break;
             ID3D11ShaderResourceView* ptSRVs[2] = { nullptr, nullptr };
             for (int i = 0; i < numPtShadows; ++i)
                 ptSRVs[i] = m_pointShadowMaps[i].GetSRV();
@@ -539,10 +543,7 @@ private:
             ImGui::TextDisabled("(gamma needs texture linearisation — M52)");
         }
         ImGui::Separator();
-        ImGui::Text("Point Shadows (M48)");
-        ImGui::SliderInt("Shadow Casters", &m_numPointShadowCasters, 0, 2);
-        ImGui::SliderFloat("Shadow Bias",  &m_pointShadowBias, 0.001f, 0.1f, "%.4f");
-        ImGui::TextDisabled("Shadow casters use lights[0..N-1]");
+        ImGui::SliderFloat("Shadow Bias", &m_pointShadowBias, 0.001f, 0.1f, "%.4f");
         ImGui::Separator();
         ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
         for (int i = 0; i < m_lights.numLights; ++i)
@@ -555,6 +556,8 @@ private:
                 ImGui::DragFloat3("Position", &m_lights.lights[i].position.x, 1.0f, -1000.0f, 1000.0f);
                 ImGui::ColorEdit3("Color",    &m_lights.lights[i].color.x);
                 ImGui::SliderFloat("Radius",  &m_lights.lights[i].radius, 0.5f, 500.0f);
+                if (i < 2)
+                    ImGui::Checkbox("Cast Shadow", &m_lightCastsShadow[i]);
             }
             ImGui::PopID();
         }
@@ -674,7 +677,7 @@ private:
     SE::SSAO                     m_ssao;
     SE::ToneMap                  m_toneMap;
     SE::PointShadowMap           m_pointShadowMaps[2];
-    int                          m_numPointShadowCasters = 1;
+    bool                         m_lightCastsShadow[8] = { true };  // only [0..1] used; rest false
     float                        m_pointShadowBias       = 0.015f;
     SE::PhysicsWorld::RaycastHit m_rayHit        = {};
     bool                         m_rayHitValid   = false;
