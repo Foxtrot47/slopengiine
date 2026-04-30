@@ -192,6 +192,7 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M48 | ~~Point light shadow maps (cube depth map, 1–2 closest lights)~~ ✓ |
 | M49 | ~~SSAO~~ ✓ |
 | M50 | ~~HDR + tone mapping (Reinhard + ACES)~~ ✓ |
+| M50b | ~~Cook-Torrance PBR BRDF (GGX NDF, Smith geometry, Schlick Fresnel; replaces Blinn-Phong in deferred pass)~~ ✓ |
 | M51 | Bloom (dual Kawase blur) |
 | M52 | IBL — diffuse irradiance + specular (split-sum) |
 
@@ -259,6 +260,15 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 ---
 
 ## Design Notes
+
+### PBR BRDF (M50b)
+- `DeferredLighting.hlsl` now uses Cook-Torrance: GGX NDF (`D_GGX`), Smith geometry (`G_Smith` = product of two `G_SchlickGGX`), Schlick Fresnel (`F_Schlick`).
+- `PBR_DirectLight(N, V, L, albedo, roughness, metallic, F0, radiance)` returns the full Lo contribution (diffuse + specular). Called for directional and each point light.
+- `F0 = lerp(0.04, albedo, metallic)` — dielectrics use 0.04, metals tint F0 toward albedo.
+- `kD = (1 - F) * (1 - metallic)` — metals have zero diffuse.
+- Roughness clamped to 0.04 minimum inside `PBR_DirectLight` to avoid NaN at perfectly smooth surfaces.
+- `_shininess` slot in `LightCB` is now unused (legacy padding). C++ side still uploads it — no struct change needed.
+- IBL (M52) slots in directly on top: same F0/roughness/metallic, adds irradiance cubemap (diffuse) + pre-filtered cubemap + BRDF LUT (specular split-sum).
 
 ### Renderer architecture (post-refactor)
 - `Renderer` = D3D11 device / swap chain / surface management only.
