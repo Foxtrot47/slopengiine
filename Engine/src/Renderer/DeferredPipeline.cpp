@@ -104,6 +104,8 @@ void DeferredPipeline::SubmitMesh(const Mesh& mesh, XMMATRIX model,
 
 void DeferredPipeline::FlushGeometry(ID3D11DeviceContext* ctx)
 {
+    float lastMetallic = m_currentMaterial.metallic;
+
     for (auto& item : m_queue)
     {
         TransformCBData tc;
@@ -118,9 +120,21 @@ void DeferredPipeline::FlushGeometry(ID3D11DeviceContext* ctx)
         {
             if (s < subMats.size())
             {
-                if (subMats[s].albedo)    subMats[s].albedo->BindPS(ctx, 0);
-                if (subMats[s].roughness) subMats[s].roughness->BindPS(ctx, 1);
-                if (subMats[s].normal)    subMats[s].normal->BindPS(ctx, 2);
+                // Update metallic per-submesh (only re-upload CB when it changes)
+                float subMetallic = subMats[s].metallic;
+                if (subMetallic != lastMetallic)
+                {
+                    MaterialCBData mc = m_currentMaterial;
+                    mc.metallic = subMetallic;
+                    m_materialCB.Update(ctx, mc);
+                    m_materialCB.BindPS(ctx, 3);
+                    lastMetallic = subMetallic;
+                }
+
+                if (subMats[s].albedo)      subMats[s].albedo->BindPS(ctx, 0);
+                if (subMats[s].roughness)   subMats[s].roughness->BindPS(ctx, 1);
+                if (subMats[s].normal)      subMats[s].normal->BindPS(ctx, 2);
+                if (subMats[s].metallicTex) subMats[s].metallicTex->BindPS(ctx, 3);
             }
             item.mesh->DrawSubMesh(ctx, s);
         }
@@ -145,6 +159,7 @@ void DeferredPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,
     mc.unlit          = 0.0f;
     mc.debugShadow    = 0.0f;
     mc._pad           = 0.0f;
+    m_currentMaterial = mc;
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 }
@@ -158,7 +173,12 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
                                      ID3D11ShaderResourceView* aoSRV,
                                      ID3D11ShaderResourceView* const* ptShadowSRVs,
                                      int numPtShadowCasters,
-                                     float ptShadowBias)
+                                     float ptShadowBias,
+                                     ID3D11ShaderResourceView* irradianceSRV,
+                                     ID3D11ShaderResourceView* prefilteredSRV,
+                                     ID3D11ShaderResourceView* brdfLutSRV,
+                                     float iblIntensity,
+                                     int prefilteredMipLevels)
 {
     // Bind scene RT as output
     const float clearBlack[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -179,6 +199,14 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
     if (ptShadowSRVs && numPtShadowCasters > 0)
         ctx->PSSetShaderResources(6, numPtShadowCasters, ptShadowSRVs);
 
+    // Bind IBL textures at t8..t10
+    bool hasIBL = (irradianceSRV && prefilteredSRV && brdfLutSRV);
+    if (hasIBL)
+    {
+        ID3D11ShaderResourceView* iblSRVs[3] = { irradianceSRV, prefilteredSRV, brdfLutSRV };
+        ctx->PSSetShaderResources(8, 3, iblSRVs);
+    }
+
     // Bind shadow comparison sampler to s1, cube sampler to s2
     ID3D11SamplerState* shadowSamp = shadow.GetSampler();
     ctx->PSSetSamplers(1, 1, &shadowSamp);
@@ -189,6 +217,7 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
 
     // Bind deferred CB (b0) with InvViewProj + screen size
     DeferredCBData dc;
+    memset(&dc, 0, sizeof(dc));
     XMMATRIX invVP = XMMatrixInverse(nullptr, viewProj);
     XMStoreFloat4x4(&dc.invViewProj, invVP);
     dc.screenW                = static_cast<float>(gb.GetWidth());
@@ -197,7 +226,9 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
     dc.enableSSAO             = aoSRV ? 1.0f : 0.0f;
     dc.numPointShadowCasters  = numPtShadowCasters;
     dc.pointShadowBias        = ptShadowBias;
-    dc._dcpad[0] = dc._dcpad[1] = 0.0f;
+    dc.enableIBL              = hasIBL ? 1.0f : 0.0f;
+    dc.prefilteredMipLevels   = static_cast<float>(prefilteredMipLevels - 1);
+    dc.iblIntensity           = iblIntensity;
     m_deferredCB.Update(ctx, dc);
     m_deferredCB.BindPS(ctx, 0);
     m_deferredCB.BindVS(ctx, 0);
@@ -209,9 +240,9 @@ void DeferredPipeline::LightingPass(ID3D11DeviceContext* ctx, GBuffer& gb,
 
     m_quad.DrawGeometryOnly(ctx);
 
-    // Unbind all G-buffer + shadow + AO + point shadow SRVs
-    ID3D11ShaderResourceView* nullSRVs[4] = { nullptr, nullptr, nullptr, nullptr };
-    ctx->PSSetShaderResources(4, 4, nullSRVs);  // t4..t7
+    // Unbind all G-buffer + shadow + AO + point shadow + IBL SRVs
+    ID3D11ShaderResourceView* nullSRVs[7] = {};
+    ctx->PSSetShaderResources(4, 7, nullSRVs);  // t4..t10
     gb.UnbindLighting(ctx);
 
     sceneRT.End(ctx);

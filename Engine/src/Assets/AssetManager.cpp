@@ -27,9 +27,11 @@ AssetHandle<Mesh> AssetManager::GetMesh(const std::string& path)
     return mesh;
 }
 
-AssetHandle<Texture2D> AssetManager::GetTexture(const std::wstring& path)
+AssetHandle<Texture2D> AssetManager::GetTexture(const std::wstring& path, bool sRGB)
 {
-    auto it = m_textures.find(path);
+    // Include sRGB in cache key to avoid returning wrong variant
+    std::wstring cacheKey = path + (sRGB ? L"|sRGB" : L"|linear");
+    auto it = m_textures.find(cacheKey);
     if (it != m_textures.end())
         if (auto h = it->second.lock()) return h;
 
@@ -42,14 +44,14 @@ AssetHandle<Texture2D> AssetManager::GetTexture(const std::wstring& path)
     if (isDDS)
         ok = tex->LoadFromDDS(m_device, path.c_str());
     else
-        ok = tex->LoadFromFile(m_device, m_context, path.c_str());
+        ok = tex->LoadFromFile(m_device, m_context, path.c_str(), sRGB);
 
     if (!ok)
     {
         SE_LOG_ERROR("AssetManager: failed to load texture");
         return nullptr;
     }
-    m_textures[path] = tex;
+    m_textures[cacheKey] = tex;
     return tex;
 }
 
@@ -70,6 +72,16 @@ AssetHandle<Texture2D> AssetManager::GetDefaultNormal()
     uint8_t px[4] = { 128, 128, 255, 255 };
     tex->CreateFromMemory(m_device, m_context, px, 1, 1);
     m_defaultNormal = tex;
+    return tex;
+}
+
+AssetHandle<Texture2D> AssetManager::GetDefaultBlack()
+{
+    if (auto h = m_defaultBlack.lock()) return h;
+    auto tex = std::make_shared<Texture2D>();
+    uint8_t px[4] = { 0, 0, 0, 255 };
+    tex->CreateFromMemory(m_device, m_context, px, 1, 1);
+    m_defaultBlack = tex;
     return tex;
 }
 

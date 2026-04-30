@@ -178,23 +178,44 @@ std::vector<ForwardPipeline::SubMat> ForwardPipeline::LoadMeshMaterials(AssetMan
         SubMeshInfo info = mesh.GetSubMeshInfo(i);
         SubMat& mat = mats[i];
 
-        auto loadTex = [&](const std::string& rawPath) -> AssetHandle<Texture2D> {
+        auto loadTex = [&](const std::string& rawPath, bool sRGB = false) -> AssetHandle<Texture2D> {
             if (rawPath.empty()) return nullptr;
             std::string dds = stemDDS(rawPath);
             // Try mesh-local Textures/ subdir first, then mesh root dir.
-            auto h = assets.GetTexture(toWide(dir + "Textures/" + dds));
-            if (!h) h = assets.GetTexture(toWide(dir + dds));
+            auto h = assets.GetTexture(toWide(dir + "Textures/" + dds), sRGB);
+            if (!h) h = assets.GetTexture(toWide(dir + dds), sRGB);
+            // Fallback: try original extension (PNG etc.)
+            if (!h) {
+                std::string name = rawPath;
+                for (auto& c : name) if (c == '\\') c = '/';
+                auto slash = name.rfind('/');
+                if (slash != std::string::npos) name = name.substr(slash + 1);
+                h = assets.GetTexture(toWide(dir + "Textures/" + name), sRGB);
+                if (!h) h = assets.GetTexture(toWide(dir + name), sRGB);
+            }
             return h;
         };
 
-        mat.albedo    = loadTex(info.albedoPath);
+        mat.albedo    = loadTex(info.albedoPath, true);  // albedo is sRGB
         if (!mat.albedo)    mat.albedo    = assets.GetDefaultWhite();
 
-        mat.normal    = loadTex(info.normalPath);
+        mat.normal    = loadTex(info.normalPath, false);  // normal is linear
         if (!mat.normal)    mat.normal    = assets.GetDefaultNormal();
 
-        mat.roughness = loadTex(info.roughnessPath);
-        if (!mat.roughness) mat.roughness = assets.GetDefaultWhite();
+        mat.roughness = loadTex(info.roughnessPath, false);  // roughness/metallic is linear
+        if (mat.roughness)
+        {
+            mat.metallic = 1.0f;  // real texture-driven metallic
+        }
+        else
+        {
+            mat.roughness = assets.GetDefaultWhite();
+            mat.metallic  = 0.0f; // no texture → dielectric
+        }
+
+        // Default metallic texture: black (dielectric). Set from code if needed.
+        if (!mat.metallicTex)
+            mat.metallicTex = assets.GetDefaultBlack();
     }
 
     return mats;

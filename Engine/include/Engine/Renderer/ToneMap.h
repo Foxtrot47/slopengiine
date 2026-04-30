@@ -26,7 +26,7 @@ public:
 
     float    exposure     = 1.0f;
     Operator op           = Operator::ACES;
-    bool     gammaCorrect = false; // keep off until textures are sRGB-linearised (M52)
+    bool     gammaCorrect = true;  // sRGB encode for correct display
 
 private:
     struct CBData

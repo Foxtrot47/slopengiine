@@ -32,5 +32,16 @@ add_custom_command(TARGET Game POST_BUILD
 add_custom_command(TARGET Game POST_BUILD
     COMMAND powershell -NoProfile -ExecutionPolicy Bypass -Command
         "New-Item -Force -ItemType Directory '$<TARGET_FILE_DIR:Game>/Assets/Bistro' | Out-Null; Get-ChildItem -Path '${CMAKE_SOURCE_DIR}/Assets/Bistro' -File | Copy-Item -Destination '$<TARGET_FILE_DIR:Game>/Assets/Bistro' -Force"
-    COMMENT "Copying Assets"
+    COMMENT "Copying Bistro assets"
+)
+
+# Textures and Meshes
+add_custom_command(TARGET Game POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Assets/Textures"
+        "$<TARGET_FILE_DIR:Game>/Assets/Textures"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Assets/Meshes"
+        "$<TARGET_FILE_DIR:Game>/Assets/Meshes"
+    COMMENT "Copying Textures and Meshes"
 )

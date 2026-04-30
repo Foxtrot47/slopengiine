@@ -22,6 +22,8 @@ public:
         AssetHandle<Texture2D> albedo;
         AssetHandle<Texture2D> normal;
         AssetHandle<Texture2D> roughness;
+        AssetHandle<Texture2D> metallicTex;   // separate metallic map (optional)
+        float metallic = 0.0f;   // 1.0 when metallic data available (from texture)
     };
 
     bool Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders);

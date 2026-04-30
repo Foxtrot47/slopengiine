@@ -20,11 +20,12 @@ public:
     // the cached instance on subsequent calls while any handle is alive.
     // Returns nullptr on load failure.
     AssetHandle<Mesh>      GetMesh   (const std::string&  path);
-    AssetHandle<Texture2D> GetTexture(const std::wstring& path);
+    AssetHandle<Texture2D> GetTexture(const std::wstring& path, bool sRGB = false);
 
     // Fallback 1×1 textures for submeshes missing a particular map.
     AssetHandle<Texture2D> GetDefaultWhite();   // flat white albedo / roughness
     AssetHandle<Texture2D> GetDefaultNormal();  // flat tangent-space normal (128,128,255)
+    AssetHandle<Texture2D> GetDefaultBlack();   // flat black (metallic = 0 → dielectric)
 
     uint32_t CachedMeshCount()    const;
     uint32_t CachedTextureCount() const;
@@ -36,6 +37,7 @@ private:
     std::unordered_map<std::wstring, std::weak_ptr<Texture2D>> m_textures;
     std::weak_ptr<Texture2D> m_defaultWhite;
     std::weak_ptr<Texture2D> m_defaultNormal;
+    std::weak_ptr<Texture2D> m_defaultBlack;
 };
 
 } // namespace SE

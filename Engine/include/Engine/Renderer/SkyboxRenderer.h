@@ -19,6 +19,8 @@ public:
     // Strip translation from view, draw unit cube at far plane.
     void Draw(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, DirectX::XMMATRIX proj);
 
+    ID3D11ShaderResourceView* GetPanoramaSRV() const { return m_panoramaSRV.Get(); }
+
 private:
     struct SkyboxCB { DirectX::XMFLOAT4X4 viewProjNoTrans; };
 

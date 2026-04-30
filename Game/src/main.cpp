@@ -26,6 +26,7 @@
 #include "Engine/Renderer/ToneMap.h"
 #include "Engine/Renderer/SSAO.h"
 #include "Engine/Renderer/PointShadowMap.h"
+#include "Engine/Renderer/IBLEnvironment.h"
 #include "Engine/Input/GamepadState.h"
 
 using namespace DirectX;
@@ -39,7 +40,7 @@ public:
 
         if (!m_skybox.Init(device, GetRenderer().GetStateCache(), GetShaders())) return false;
         if (!m_skybox.LoadPanorama(device,
-                L"Assets/Bistro/san_giuseppe_bridge_4k.dds")) return false;
+                L"Assets/Textures/environment.hdr")) return false;
 
         if (!m_lights.Init(device))                return false;
         if (!m_pipeline.Init(device, GetAssets(), GetShaders())) return false;
@@ -52,7 +53,8 @@ public:
         // Locked-in sun + ambient for Bistro exterior
         m_lights.elevDeg        = 63.0f;
         m_lights.azimDeg        = -134.6f;
-        m_lights.ambientColor[0] = m_lights.ambientColor[1] = m_lights.ambientColor[2] = 70.0f / 255.0f;
+        m_lights.lightIntensity = 8.0f;
+        m_lights.ambientColor[0] = m_lights.ambientColor[1] = m_lights.ambientColor[2] = 0.03f;
         // One default point light for M48 point shadow testing
         m_lights.numLights                  = 1;
         m_lights.lights[0].position         = { -440.0f, 130.0f, 65.0f };
@@ -110,6 +112,11 @@ public:
         // Point shadow maps (M48) — 2 slots, 256x256 per cube face
         for (int i = 0; i < 2; ++i)
             if (!m_pointShadowMaps[i].Init(device, GetShaders(), 256)) return false;
+
+        // IBL (M52)
+        if (!m_ibl.Init(device, GetShaders())) return false;
+        if (!m_ibl.Generate(device, GetRenderer().GetContext(), m_skybox.GetPanoramaSRV()))
+            SE_LOG_ERROR("IBL generation failed — falling back to flat ambient");
 
         if (m_mesh)
         {
@@ -263,7 +270,11 @@ protected:
                 ptSRVs[i] = m_pointShadowMaps[i].GetSRV();
             m_deferredPipeline.LightingPass(ctx, m_gbuffer, m_deferredSceneRT,
                 m_lights, m_shadowMap, m_camera->eye, viewProj, aoSRV,
-                ptSRVs, numPtShadows, m_pointShadowBias);
+                ptSRVs, numPtShadows, m_pointShadowBias,
+                m_ibl.IsReady() ? m_ibl.GetIrradianceSRV()  : nullptr,
+                m_ibl.IsReady() ? m_ibl.GetPrefilteredSRV() : nullptr,
+                m_ibl.IsReady() ? m_ibl.GetBRDFLutSRV()     : nullptr,
+                m_iblIntensity, SE::IBLEnvironment::k_prefilteredMips);
 
             // Skybox composites on top using G-buffer depth
             m_gbuffer.BindDepthForComposite(ctx, m_deferredSceneRT.GetRTV());
@@ -443,7 +454,7 @@ private:
         ImGui::Begin("Material");
         ImGui::ColorEdit3("Albedo Tint",      m_matTint);
         ImGui::SliderFloat("Roughness Scale", &m_roughnessScale, 0.0f, 2.0f);
-        ImGui::SliderFloat("Metallic",        &m_metallic,       0.0f, 1.0f);
+        ImGui::SliderFloat("Metallic Scale",  &m_metallic,       0.0f, 2.0f);
         ImGui::End();
 
         // --- Physics ---
@@ -505,7 +516,7 @@ private:
         ImGui::Text("Sun");
         ImGui::SliderFloat("Elevation",    &m_lights.elevDeg,  -90.0f, 90.0f,  "%.1f deg");
         ImGui::SliderFloat("Azimuth",      &m_lights.azimDeg, -180.0f, 180.0f, "%.1f deg");
-        ImGui::SliderFloat("Intensity",    &m_lights.lightIntensity, 0.0f, 10.0f, "%.2f");
+        ImGui::SliderFloat("Intensity",    &m_lights.lightIntensity, 0.0f, 30.0f, "%.2f");
         ImGui::ColorEdit3("Light Color",   m_lights.lightColor);
         ImGui::ColorEdit3("Ambient Color", m_lights.ambientColor);
         ImGui::SliderFloat("Shininess",    &m_lights.shininess, 1.0f, 256.0f, "%.0f");
@@ -534,13 +545,23 @@ private:
             }
             ImGui::Separator();
             ImGui::Text("Tone Mapping");
-            ImGui::SliderFloat("Exposure",     &m_toneMap.exposure, 0.01f, 10.0f, "%.2f");
+            ImGui::SliderFloat("Exposure",     &m_toneMap.exposure, 0.01f, 30.0f, "%.2f");
             int op = static_cast<int>(m_toneMap.op);
             ImGui::RadioButton("Reinhard", &op, 0); ImGui::SameLine();
             ImGui::RadioButton("ACES",     &op, 1);
             m_toneMap.op = static_cast<SE::ToneMap::Operator>(op);
             ImGui::Checkbox("Gamma Correct", &m_toneMap.gammaCorrect);
             ImGui::TextDisabled("(gamma needs texture linearisation — M52)");
+            ImGui::Separator();
+            ImGui::Text("IBL");
+            if (m_ibl.IsReady())
+            {
+                ImGui::SliderFloat("IBL Intensity", &m_iblIntensity, 0.0f, 5.0f, "%.2f");
+            }
+            else
+            {
+                ImGui::TextDisabled("IBL not available");
+            }
         }
         ImGui::Separator();
         ImGui::SliderFloat("Shadow Bias", &m_pointShadowBias, 0.001f, 0.1f, "%.4f");
@@ -649,7 +670,7 @@ private:
 
     float m_matTint[3]     = { 1.0f, 1.0f, 1.0f };
     float m_roughnessScale = 1.0f;
-    float m_metallic       = 0.0f;
+    float m_metallic       = 1.0f;  // scale for per-submesh texture metallic
 
     SE::PhysicsWorld        m_physicsWorld;
     SE::TransformComponent* m_ballTransform = nullptr;
@@ -665,7 +686,7 @@ private:
     bool                         m_castRay           = false;
     bool                         m_debugShadow       = false;
     bool                         m_postProcess       = true;
-    bool                         m_useDeferred       = false;
+    bool                         m_useDeferred       = true;
     float                        m_sceneScale        = 1.0f;
     float                        m_sceneRotXDeg      = 0.0f;
     DirectX::XMMATRIX            m_meshWorld         = DirectX::XMMatrixIdentity();
@@ -677,8 +698,11 @@ private:
     SE::SSAO                     m_ssao;
     SE::ToneMap                  m_toneMap;
     SE::PointShadowMap           m_pointShadowMaps[2];
+    SE::IBLEnvironment           m_ibl;
     bool                         m_lightCastsShadow[8] = { true };  // only [0..1] used; rest false
     float                        m_pointShadowBias       = 0.015f;
+    float                        m_iblIntensity          = 1.0f;
+    SE::AssetHandle<SE::Texture2D> m_cerberusMetallicTex;
     SE::PhysicsWorld::RaycastHit m_rayHit        = {};
     bool                         m_rayHitValid   = false;
 };

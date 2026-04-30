@@ -17,6 +17,7 @@ cbuffer MaterialCB : register(b3)
 Texture2D    g_albedo    : register(t0);
 Texture2D    g_roughness : register(t1);
 Texture2D    g_normal    : register(t2);
+Texture2D    g_metallic  : register(t3);
 SamplerState g_sampler   : register(s0);
 
 struct VSIn
@@ -77,8 +78,9 @@ PSOut PS_Main(PSIn input)
     o.Normal = float4(N, 0.0f);
 
     // Material
-    float roughness = g_roughness.Sample(g_sampler, input.TexCoord).g * RoughnessScale;
-    o.Material = float4(roughness, Metallic, 0.0f, 0.0f);
+    float roughness = g_roughness.Sample(g_sampler, input.TexCoord).r * RoughnessScale;
+    float metallic  = g_metallic.Sample(g_sampler, input.TexCoord).r * Metallic;
+    o.Material = float4(roughness, metallic, 0.0f, 0.0f);
 
     return o;
 }

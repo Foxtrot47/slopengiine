@@ -72,19 +72,40 @@ bool SkyboxRenderer::Init(ID3D11Device* device, RenderStateCache& cache, ShaderL
 bool SkyboxRenderer::LoadPanorama(ID3D11Device* device, const wchar_t* path)
 {
     DirectX::ScratchImage image;
-    HRESULT hr = DirectX::LoadFromDDSFile(path, DirectX::DDS_FLAGS_NONE, nullptr, image);
+    HRESULT hr = E_FAIL;
+
+    // Route by extension: .dds → DDS, .hdr → HDR
+    size_t len = wcslen(path);
+    if (len >= 4 && _wcsicmp(path + len - 4, L".dds") == 0)
+        hr = DirectX::LoadFromDDSFile(path, DirectX::DDS_FLAGS_NONE, nullptr, image);
+    else if (len >= 4 && _wcsicmp(path + len - 4, L".hdr") == 0)
+        hr = DirectX::LoadFromHDRFile(path, nullptr, image);
+
     if (FAILED(hr))
     {
         char pathA[MAX_PATH];
         WideCharToMultiByte(CP_UTF8, 0, path, -1, pathA, MAX_PATH, nullptr, nullptr);
-        SE_LOG_ERROR("SkyboxRenderer: LoadFromDDSFile failed '%s': 0x%08X", pathA, hr);
+        SE_LOG_ERROR("SkyboxRenderer: failed to load panorama '%s': 0x%08X", pathA, hr);
         return false;
     }
 
     const DirectX::TexMetadata& meta = image.GetMetadata();
+
+    // Convert to R32G32B32A32_FLOAT if not already a float format for HDR precision
+    DirectX::ScratchImage converted;
+    const DirectX::ScratchImage* src = &image;
+    if (meta.format != DXGI_FORMAT_R32G32B32A32_FLOAT &&
+        meta.format != DXGI_FORMAT_R16G16B16A16_FLOAT)
+    {
+        hr = DirectX::Convert(image.GetImages()[0], DXGI_FORMAT_R32G32B32A32_FLOAT,
+                              DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, converted);
+        if (SUCCEEDED(hr)) src = &converted;
+    }
+
+    const DirectX::TexMetadata& finalMeta = src->GetMetadata();
     hr = DirectX::CreateShaderResourceViewEx(
         device,
-        image.GetImages(), image.GetImageCount(), meta,
+        src->GetImages(), src->GetImageCount(), finalMeta,
         D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0,
         DirectX::CREATETEX_DEFAULT,
         m_panoramaSRV.ReleaseAndGetAddressOf());
@@ -94,7 +115,7 @@ bool SkyboxRenderer::LoadPanorama(ID3D11Device* device, const wchar_t* path)
         return false;
     }
 
-    SE_LOG_INFO("SkyboxRenderer: panorama loaded %zux%zu BC6H", meta.width, meta.height);
+    SE_LOG_INFO("SkyboxRenderer: panorama loaded %zux%zu", finalMeta.width, finalMeta.height);
     return true;
 }
 

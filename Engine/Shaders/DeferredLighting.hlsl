@@ -11,6 +11,10 @@ Texture2D    g_ao       : register(t5);
 // Point shadow cube maps (up to 2 shadow-casting lights at indices 0..1)
 TextureCube<float> g_pointShadow0 : register(t6);
 TextureCube<float> g_pointShadow1 : register(t7);
+// IBL textures
+TextureCube  g_irradiance  : register(t8);
+TextureCube  g_prefiltered : register(t9);
+Texture2D    g_brdfLut     : register(t10);
 SamplerState               g_sampler       : register(s0);
 SamplerComparisonState     g_shadowSampler : register(s1);
 SamplerState               g_cubeSampler   : register(s2);
@@ -47,7 +51,10 @@ cbuffer DeferredCB : register(b0)
     float            EnableSSAO;
     int              NumPointShadowCasters;
     float            PointShadowBias;
-    float2           _dcpad;
+    float            EnableIBL;
+    float            PrefilteredMipLevels;
+    float            IBLIntensity;
+    float3           _dcpad2;
 };
 
 // ---- PBR helpers (Cook-Torrance) ----
@@ -79,6 +86,13 @@ float G_Smith(float NdotV, float NdotL, float roughness)
 float3 F_Schlick(float cosTheta, float3 F0)
 {
     return F0 + (1.0f - F0) * pow(saturate(1.0f - cosTheta), 5.0f);
+}
+
+// Roughness-aware Fresnel for IBL energy split
+float3 F_SchlickRoughness(float cosTheta, float3 F0, float roughness)
+{
+    float3 oneMinusR = float3(1.0f - roughness, 1.0f - roughness, 1.0f - roughness);
+    return F0 + (max(oneMinusR, F0) - F0) * pow(saturate(1.0f - cosTheta), 5.0f);
 }
 
 // Full Cook-Torrance specular BRDF + Lambertian diffuse, returns Lo contribution.
@@ -180,7 +194,34 @@ float4 PS_Main(VSOutput input) : SV_TARGET
 
     // --- Directional light (PBR) ---
     float3 L      = normalize(LightDir);
-    float3 color  = ao * AmbientColor * albedo * (1.0f - metallic * 0.9f); // simple ambient
+    float  NdotV  = max(dot(N, V), 0.0001f);
+
+    // --- Ambient / IBL ---
+    float3 color;
+    if (EnableIBL > 0.5f)
+    {
+        // Split-sum IBL ambient
+        float3 kS_ibl = F_SchlickRoughness(NdotV, F0, roughness);
+        float3 kD_ibl = (1.0f - kS_ibl) * (1.0f - metallic);
+
+        // Diffuse: irradiance cubemap sampled with N
+        float3 irradiance = g_irradiance.Sample(g_cubeSampler, N).rgb;
+        float3 diffuseIBL = kD_ibl * irradiance * albedo;
+
+        // Specular: pre-filtered env map + BRDF LUT
+        float3 R = reflect(-V, N);
+        float3 prefilteredColor = g_prefiltered.SampleLevel(g_cubeSampler, R,
+            roughness * PrefilteredMipLevels).rgb;
+        float2 envBRDF = g_brdfLut.SampleLevel(g_cubeSampler, float2(NdotV, roughness), 0).rg;
+        float3 specularIBL = prefilteredColor * (F0 * envBRDF.x + envBRDF.y);
+
+        color = ao * IBLIntensity * (diffuseIBL + specularIBL);
+    }
+    else
+    {
+        color = ao * AmbientColor * albedo * (1.0f - metallic * 0.9f);
+    }
+
     float  NdotL  = max(dot(N, L), 0.0f);
     color += shadow * PBR_DirectLight(N, V, L, albedo, roughness, metallic, F0, LightColor);
 

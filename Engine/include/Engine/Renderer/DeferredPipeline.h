@@ -50,7 +50,12 @@ public:
                       ID3D11ShaderResourceView* aoSRV = nullptr,
                       ID3D11ShaderResourceView* const* ptShadowSRVs = nullptr,
                       int numPtShadowCasters = 0,
-                      float ptShadowBias = 0.015f);
+                      float ptShadowBias = 0.015f,
+                      ID3D11ShaderResourceView* irradianceSRV = nullptr,
+                      ID3D11ShaderResourceView* prefilteredSRV = nullptr,
+                      ID3D11ShaderResourceView* brdfLutSRV = nullptr,
+                      float iblIntensity = 1.0f,
+                      int prefilteredMipLevels = 5);
 
 private:
     struct TransformCBData
@@ -71,7 +76,9 @@ private:
         DirectX::XMFLOAT4X4 invViewProj;
         float screenW; float screenH;
         float debugMode; float enableSSAO;
-        int   numPointShadowCasters; float pointShadowBias; float _dcpad[2];
+        int   numPointShadowCasters; float pointShadowBias;
+        float enableIBL; float prefilteredMipLevels;
+        float iblIntensity; float _dcpad2[3];
     };
 
     struct RenderItem
@@ -89,6 +96,7 @@ private:
     ComPtr<ID3D11SamplerState>     m_cubeSampler;  // linear-clamp for point shadow cube
     ConstantBuffer<TransformCBData>  m_transformCB;
     ConstantBuffer<MaterialCBData>   m_materialCB;
+    MaterialCBData                   m_currentMaterial = {};
     ConstantBuffer<DeferredCBData>   m_deferredCB;
     FullscreenQuad                   m_quad;
 
