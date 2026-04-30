@@ -34,13 +34,22 @@ AssetHandle<Texture2D> AssetManager::GetTexture(const std::wstring& path)
         if (auto h = it->second.lock()) return h;
 
     auto tex = std::make_shared<Texture2D>();
-    if (!tex->LoadFromFile(m_device, m_context, path.c_str()))
+    bool ok  = false;
+
+    // Route by extension — .dds via DirectXTex, everything else via WIC.
+    bool isDDS = path.size() >= 4 &&
+                 _wcsicmp(path.c_str() + path.size() - 4, L".dds") == 0;
+    if (isDDS)
+        ok = tex->LoadFromDDS(m_device, path.c_str());
+    else
+        ok = tex->LoadFromFile(m_device, m_context, path.c_str());
+
+    if (!ok)
     {
         SE_LOG_ERROR("AssetManager: failed to load texture");
         return nullptr;
     }
     m_textures[path] = tex;
-    SE_LOG_INFO("AssetManager: loaded texture");
     return tex;
 }
 

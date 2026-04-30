@@ -2,6 +2,7 @@
 #include "Engine/Core/Logger.h"
 #include <wincodec.h>
 #include <vector>
+#include <DirectXTex.h>
 
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "ole32.lib")
@@ -43,6 +44,81 @@ bool Texture2D::LoadFromFile(ID3D11Device* device, ID3D11DeviceContext* ctx, con
     if (FAILED(hr)) { SE_LOG_ERROR("WIC: CopyPixels failed: 0x%08X", hr); return false; }
 
     return CreateSRV(device, ctx, pixels.data(), width, height);
+}
+
+bool Texture2D::LoadFromDDS(ID3D11Device* device, const wchar_t* path)
+{
+    using namespace DirectX;
+
+    ScratchImage image;
+    HRESULT hr = LoadFromDDSFile(path, DDS_FLAGS_NONE, nullptr, image);
+    if (FAILED(hr))
+    {
+        char narrow[MAX_PATH];
+        WideCharToMultiByte(CP_UTF8, 0, path, -1, narrow, MAX_PATH, nullptr, nullptr);
+        SE_LOG_ERROR("Texture2D: DDS load failed '%s': 0x%08X", narrow, hr);
+        return false;
+    }
+
+    TexMetadata meta = image.GetMetadata();
+    m_width  = static_cast<uint32_t>(meta.width);
+    m_height = static_cast<uint32_t>(meta.height);
+
+    // Some legacy DDS files (DX9-era) produce DXGI_FORMAT_UNKNOWN which D3D11 rejects.
+    // Decompress/convert them to RGBA8 before upload.
+    UINT fmtSupport = 0;
+    ScratchImage converted;
+    if (meta.format == DXGI_FORMAT_UNKNOWN ||
+        (IsCompressed(meta.format) &&
+         (FAILED(device->CheckFormatSupport(meta.format, &fmtSupport)) ||
+          !(fmtSupport & D3D11_FORMAT_SUPPORT_TEXTURE2D))))
+    {
+        hr = Decompress(image.GetImages(), image.GetImageCount(), meta,
+                        DXGI_FORMAT_R8G8B8A8_UNORM, converted);
+        if (SUCCEEDED(hr)) { image = std::move(converted); meta = image.GetMetadata(); }
+    }
+
+    ComPtr<ID3D11Resource> resource;
+    hr = CreateTexture(device, image.GetImages(), image.GetImageCount(), meta,
+                       resource.GetAddressOf());
+    if (FAILED(hr))
+    {
+        // Try once more after forcing to RGBA8
+        ScratchImage fallback;
+        if (IsCompressed(meta.format))
+            Decompress(image.GetImages(), image.GetImageCount(), meta,
+                       DXGI_FORMAT_R8G8B8A8_UNORM, fallback);
+        else
+            Convert(*image.GetImages(), DXGI_FORMAT_R8G8B8A8_UNORM,
+                    TEX_FILTER_DEFAULT, TEX_THRESHOLD_DEFAULT, fallback);
+
+        if (fallback.GetImageCount() > 0)
+        {
+            meta = fallback.GetMetadata();
+            hr   = CreateTexture(device, fallback.GetImages(), fallback.GetImageCount(),
+                                 meta, resource.ReleaseAndGetAddressOf());
+        }
+
+        if (FAILED(hr))
+        {
+            char narrow[MAX_PATH];
+            WideCharToMultiByte(CP_UTF8, 0, path, -1, narrow, MAX_PATH, nullptr, nullptr);
+            SE_LOG_ERROR("Texture2D: DDS CreateTexture failed '%s' fmt=%u: 0x%08X",
+                         narrow, (unsigned)meta.format, hr);
+            return false;
+        }
+    }
+
+    if (FAILED(resource.As(&m_texture)))
+    {
+        SE_LOG_ERROR("Texture2D: DDS resource is not a Texture2D");
+        return false;
+    }
+
+    hr = device->CreateShaderResourceView(m_texture.Get(), nullptr, &m_srv);
+    if (FAILED(hr)) { SE_LOG_ERROR("Texture2D: DDS CreateSRV failed: 0x%08X", hr); return false; }
+
+    return true;
 }
 
 bool Texture2D::CreateFromMemory(ID3D11Device* device, ID3D11DeviceContext* ctx,

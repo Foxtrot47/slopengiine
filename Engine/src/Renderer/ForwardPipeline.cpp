@@ -1,5 +1,6 @@
 #include "Engine/Renderer/ForwardPipeline.h"
 #include "Engine/Core/Logger.h"
+#include <windows.h>
 #include <d3dcompiler.h>
 #include <cmath>
 
@@ -159,6 +160,16 @@ std::vector<ForwardPipeline::SubMat> ForwardPipeline::LoadMeshMaterials(AssetMan
         return std::wstring(s.begin(), s.end());
     };
 
+    // Extract filename stem and force .dds extension, stripping any embedded directory.
+    auto stemDDS = [](const std::string& raw) -> std::string {
+        std::string p = raw;
+        for (auto& c : p) if (c == '\\') c = '/';
+        auto slash = p.rfind('/');
+        std::string name = (slash != std::string::npos) ? p.substr(slash + 1) : p;
+        auto dot = name.rfind('.');
+        return (dot != std::string::npos ? name.substr(0, dot) : name) + ".dds";
+    };
+
     const std::string& dir = mesh.GetDirectory();
     std::vector<SubMat> mats(mesh.GetSubMeshCount());
 
@@ -167,20 +178,23 @@ std::vector<ForwardPipeline::SubMat> ForwardPipeline::LoadMeshMaterials(AssetMan
         SubMeshInfo info = mesh.GetSubMeshInfo(i);
         SubMat& mat = mats[i];
 
-        if (!info.albedoPath.empty())
-            mat.albedo = assets.GetTexture(toWide(dir + info.albedoPath));
-        if (!mat.albedo)
-            mat.albedo = assets.GetDefaultWhite();
+        auto loadTex = [&](const std::string& rawPath) -> AssetHandle<Texture2D> {
+            if (rawPath.empty()) return nullptr;
+            std::string dds = stemDDS(rawPath);
+            // Try mesh-local Textures/ subdir first, then mesh root dir.
+            auto h = assets.GetTexture(toWide(dir + "Textures/" + dds));
+            if (!h) h = assets.GetTexture(toWide(dir + dds));
+            return h;
+        };
 
-        if (!info.normalPath.empty())
-            mat.normal = assets.GetTexture(toWide(dir + info.normalPath));
-        if (!mat.normal)
-            mat.normal = assets.GetDefaultNormal();
+        mat.albedo    = loadTex(info.albedoPath);
+        if (!mat.albedo)    mat.albedo    = assets.GetDefaultWhite();
 
-        if (!info.roughnessPath.empty())
-            mat.roughness = assets.GetTexture(toWide(dir + info.roughnessPath));
-        if (!mat.roughness)
-            mat.roughness = assets.GetDefaultWhite();
+        mat.normal    = loadTex(info.normalPath);
+        if (!mat.normal)    mat.normal    = assets.GetDefaultNormal();
+
+        mat.roughness = loadTex(info.roughnessPath);
+        if (!mat.roughness) mat.roughness = assets.GetDefaultWhite();
     }
 
     return mats;
