@@ -37,27 +37,34 @@ public:
 
         if (!m_skybox.Init(device, GetRenderer().GetStateCache(), GetShaders())) return false;
         if (!m_skybox.LoadPanorama(device,
-                L"Assets/Textures/citrus_orchard_road_puresky_2k.exr")) return false;
+                L"Assets/Bistro/san_giuseppe_bridge_4k.dds")) return false;
 
         if (!m_lights.Init(device))                return false;
         if (!m_pipeline.Init(device, GetAssets(), GetShaders())) return false;
         if (!m_shadowMap.Init(device, GetShaders(), 2048)) return false;
 
-        m_mesh    = GetAssets().GetMesh("Assets/Sponza/Sponza.gltf");
+        m_mesh    = GetAssets().GetMesh("Assets/Bistro/BistroExterior.fbx");
         if (!m_mesh) return false;
         m_subMats = m_pipeline.LoadMeshMaterials(GetAssets(), *m_mesh);
 
-        m_lights.numLights = 2;
-        m_lights.lights[0] = { { 0.0f, 5.0f, 0.0f }, { 1.0f, 0.85f, 0.5f }, 18.0f };
-        m_lights.lights[1] = { { 8.0f, 3.0f, 0.0f }, { 0.3f, 0.5f,  1.0f }, 10.0f };
+        // Locked-in sun + ambient for Bistro exterior
+        m_lights.elevDeg        = 63.0f;
+        m_lights.azimDeg        = -134.6f;
+        m_lights.ambientColor[0] = m_lights.ambientColor[1] = m_lights.ambientColor[2] = 70.0f / 255.0f;
+        m_lights.numLights      = 0;
 
         SE::Entity* camEnt       = m_scene.CreateEntity("Camera");
         m_camera                 = camEnt->AddComponent<SE::CameraComponent>();
-        m_camera->farZ           = 5000.0f;
-        m_camCtrl.freeFly.eye      = { 0.0f, 4.0f, -22.0f };
+        m_camera->nearZ          = 0.05f;
+        m_camera->farZ           = 500.0f;
+        m_camCtrl.freeFly.eye      = { -479.0f, 112.0f, 78.0f };
         m_camCtrl.freeFly.yawDeg   = 0.0f;
         m_camCtrl.freeFly.pitchDeg = 0.0f;
         m_camCtrl.Update(0.0f, GetInput(), *m_camera, GetWindow().GetHandle());
+
+        // Scene scale + orientation for Bistro (Unreal Z-up → Y-up)
+        m_sceneScale    = 0.5f;
+        m_sceneRotXDeg  = -90.0f;
 
         SE::Entity* ballEnt        = m_scene.CreateEntity("PhysBall");
         m_ballTransform            = ballEnt->AddComponent<SE::TransformComponent>();
@@ -69,16 +76,7 @@ public:
                                         {  30.0f, m_floorY,        30.0f });
         m_physicsWorld.AddStaticOBB(m_obbFloor, 0.6f, 0.4f);
 
-        // Test OBBs for M35/M36.
-        m_obbA = SE::OBB::FromAABB({ 2.0f, 0.0f, -2.0f }, { 6.0f, 4.0f, 2.0f });
-        m_obbB = SE::OBB::MakeRotatedY({ -5.0f, 2.0f, 3.0f }, { 3.0f, 2.0f, 1.0f }, 30.0f);
-        m_obbC = SE::OBB::FromAABB({ -3.0f, 0.0f, -1.0f }, { -1.0f, 0.28f, 1.0f }); // step-up test
-        m_physicsWorld.AddStaticOBB(m_obbA, 0.5f, 0.4f);
-        m_physicsWorld.AddStaticOBB(m_obbB, 0.5f, 0.4f);
-        m_physicsWorld.AddStaticOBB(m_obbC, 0.5f, 0.4f);
-
-        // Character controller starts at eye level above scene centre.
-        m_cc.position = { 0.0f, 5.0f, 0.0f };
+        m_cc.position = { -479.0f, 5.0f, 78.0f };
 
         // Post-process infrastructure (M46)
         if (!m_sceneRT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight()))
@@ -102,10 +100,10 @@ public:
         if (m_mesh)
         {
             const SE::AABB& b = m_mesh->GetBounds();
-            SE_LOG_INFO("Sponza AABB: min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f)",
+            SE_LOG_INFO("Bistro AABB: min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f)",
                 b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z);
         }
-        SE_LOG_INFO("TestScene ready — Sponza (%u submeshes)", m_mesh->GetSubMeshCount());
+        SE_LOG_INFO("TestScene ready — Bistro Exterior (%u submeshes)", m_mesh->GetSubMeshCount());
         return true;
     }
 
@@ -188,15 +186,22 @@ protected:
 
         DrawUI(view, proj);
 
+        m_meshWorld = XMMatrixRotationX(XMConvertToRadians(m_sceneRotXDeg))
+                    * XMMatrixScaling(m_sceneScale, m_sceneScale, m_sceneScale);
+
         // Shadow pass
         {
             float er = XMConvertToRadians(m_lights.elevDeg);
             float ar = XMConvertToRadians(m_lights.azimDeg);
             XMFLOAT3 lightDir = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
-            SE::AABB bounds = m_mesh ? m_mesh->GetBounds() : SE::AABB{};
+            SE::AABB raw = m_mesh ? m_mesh->GetBounds() : SE::AABB{};
+            SE::AABB bounds = {
+                { raw.min.x * m_sceneScale, raw.min.y * m_sceneScale, raw.min.z * m_sceneScale },
+                { raw.max.x * m_sceneScale, raw.max.y * m_sceneScale, raw.max.z * m_sceneScale }
+            };
             m_shadowMap.UpdateLightMatrix(lightDir, bounds);
             m_shadowMap.BeginShadowPass(ctx);
-            if (m_mesh) m_shadowMap.DrawMesh(ctx, *m_mesh, XMMatrixIdentity());
+            if (m_mesh) m_shadowMap.DrawMesh(ctx, *m_mesh, m_meshWorld);
             m_shadowMap.DrawSphere(ctx, m_ballTransform->position, m_ballRadius);
             m_shadowMap.EndShadowPass(ctx);
         }
@@ -208,7 +213,7 @@ protected:
             m_deferredPipeline.BeginGeometryPass(ctx, m_gbuffer, view, proj);
             m_deferredPipeline.SetMaterialParams(ctx,
                 { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic);
-            m_deferredPipeline.SubmitMesh(*m_mesh, XMMatrixIdentity(), m_subMats);
+            m_deferredPipeline.SubmitMesh(*m_mesh, m_meshWorld, m_subMats);
             m_deferredPipeline.FlushGeometry(ctx);
             m_deferredPipeline.EndGeometryPass(ctx, m_gbuffer);
 
@@ -251,7 +256,7 @@ protected:
             m_pipeline.SetMaterialParams(ctx,
                 { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic,
                 m_debugShadow ? 1.0f : 0.0f);
-            m_pipeline.SubmitMesh(*m_mesh, XMMatrixIdentity(), m_subMats);
+            m_pipeline.SubmitMesh(*m_mesh, m_meshWorld, m_subMats);
             m_pipeline.Flush(ctx);
             m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
             m_shadowMap.Unbind(ctx);
@@ -279,9 +284,6 @@ protected:
             m_pipeline.DrawWireSphere(ctx, m_ballTransform->position, m_ballRadius,
                                       { 0.0f, 1.0f, 0.2f });
             m_pipeline.DrawWireBox(ctx, m_obbFloor.GetWorldMatrix(), { 1.0f, 0.85f, 0.1f });
-            m_pipeline.DrawWireBox(ctx, m_obbA.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
-            m_pipeline.DrawWireBox(ctx, m_obbB.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
-            m_pipeline.DrawWireBox(ctx, m_obbC.GetWorldMatrix(), { 0.3f, 0.7f, 1.0f });
 
             XMFLOAT3 bottom = { m_cc.position.x, m_cc.position.y + m_cc.radius, m_cc.position.z };
             m_pipeline.DrawWireSphere(ctx, bottom, m_cc.radius, { 1.0f, 0.4f, 0.8f });
@@ -335,9 +337,9 @@ protected:
 
             // Deferred: blit deferred scene RT → back buffer
             GetRenderer().BindBackBuffer(ctx);
-            m_deferredSceneRT.BindPS(ctx, 0);
-            m_fsQuad.Draw(ctx);
-            m_deferredSceneRT.UnbindPS(ctx, 0);
+                            m_deferredSceneRT.BindPS(ctx, 0);
+                m_fsQuad.Draw(ctx);
+                m_deferredSceneRT.UnbindPS(ctx, 0);
         }
         else if (m_postProcess)
         {
@@ -391,9 +393,12 @@ private:
             ImGui::SliderFloat("Move Speed",  &m_camCtrl.freeFly.moveSpeed,   1.0f, 200.0f);
             ImGui::SliderFloat("Sensitivity", &m_camCtrl.freeFly.sensitivity, 0.05f, 0.5f);
         }
+        ImGui::SliderFloat("Near Z", &m_camera->nearZ, 0.001f, 10.0f, "%.3f");
         ImGui::SliderFloat("Far Z", &m_camera->farZ, 100.0f, 20000.0f, "%.0f");
         ImGui::Text("Eye (%.1f, %.1f, %.1f)",
             m_camera->eye.x, m_camera->eye.y, m_camera->eye.z);
+        ImGui::SliderFloat("Scene Scale",  &m_sceneScale,    0.001f, 2.0f,   "%.4f");
+        ImGui::SliderFloat("Rotate X",     &m_sceneRotXDeg, -180.0f, 180.0f, "%.1f deg");
         ImGui::End();
 
         // --- Material ---
@@ -427,9 +432,6 @@ private:
             m_obbFloor = SE::OBB::FromAABB({ -30.0f, m_floorY - 0.5f, -30.0f },
                                             {  30.0f, m_floorY,        30.0f });
             m_physicsWorld.AddStaticOBB(m_obbFloor, 0.6f, 0.4f);
-            m_physicsWorld.AddStaticOBB(m_obbA, 0.5f, 0.4f);
-            m_physicsWorld.AddStaticOBB(m_obbB, 0.5f, 0.4f);
-            m_physicsWorld.AddStaticOBB(m_obbC, 0.5f, 0.4f);
         }
         ImGui::Text("pos (%.1f, %.1f, %.1f)",
             m_ballTransform->position.x, m_ballTransform->position.y, m_ballTransform->position.z);
@@ -445,8 +447,8 @@ private:
             if (m_rayHitValid)
             {
                 const char* what =
-                    m_rayHit.kind == SE::PhysicsWorld::RaycastHit::Kind::Sphere ? "Ball" :
-                    m_rayHit.kind == SE::PhysicsWorld::RaycastHit::Kind::OBB    ? "OBB"  : "Floor";
+                    m_rayHit.kind == SE::PhysicsWorld::RaycastHit::Kind::Sphere ? "Sphere" :
+                    m_rayHit.kind == SE::PhysicsWorld::RaycastHit::Kind::OBB    ? "OBB"    : "Floor";
                 ImGui::Text("Hit: %s  t=%.2f", what, m_rayHit.t);
                 ImGui::Text("pos  (%.1f, %.1f, %.1f)",
                     m_rayHit.point.x,  m_rayHit.point.y,  m_rayHit.point.z);
@@ -465,12 +467,18 @@ private:
         ImGui::Text("Sun");
         ImGui::SliderFloat("Elevation",    &m_lights.elevDeg,  -90.0f, 90.0f,  "%.1f deg");
         ImGui::SliderFloat("Azimuth",      &m_lights.azimDeg, -180.0f, 180.0f, "%.1f deg");
+        ImGui::SliderFloat("Intensity",    &m_lights.lightIntensity, 0.0f, 10.0f, "%.2f");
         ImGui::ColorEdit3("Light Color",   m_lights.lightColor);
         ImGui::ColorEdit3("Ambient Color", m_lights.ambientColor);
         ImGui::SliderFloat("Shininess",    &m_lights.shininess, 1.0f, 256.0f, "%.0f");
         ImGui::Separator();
-        ImGui::Text("Shadow Debug");
+        ImGui::Text("Light Debug");
         ImGui::Checkbox("Show Shadow Factor", &m_debugShadow);
+        int dlm = (int)m_lights.debugLightMode;
+        ImGui::RadioButton("Normal",    &dlm, 0); ImGui::SameLine();
+        ImGui::RadioButton("Force Lit", &dlm, 1); ImGui::SameLine();
+        ImGui::RadioButton("NdotL",     &dlm, 2);
+        m_lights.debugLightMode = (float)dlm;
         ImGui::Checkbox("Post-Process Blit", &m_postProcess);
         ImGui::Checkbox("Deferred Shading", &m_useDeferred);
         if (m_useDeferred)
@@ -599,17 +607,17 @@ private:
     float                   m_ballRadius    = 1.0f;
     float                   m_floorY        = 0.0f;
     SE::OBB                 m_obbFloor;
-    SE::OBB                 m_obbA;
-    SE::OBB                 m_obbB;
-    SE::OBB                 m_obbC; // low step for step-up test
     SE::CharacterController m_cc;
 
     bool                         m_gravityEnabled    = true;
-    bool                         m_showColliders     = true;
+    bool                         m_showColliders     = false;
     bool                         m_castRay           = false;
     bool                         m_debugShadow       = false;
     bool                         m_postProcess       = true;
     bool                         m_useDeferred       = false;
+    float                        m_sceneScale        = 1.0f;
+    float                        m_sceneRotXDeg      = 0.0f;
+    DirectX::XMMATRIX            m_meshWorld         = DirectX::XMMatrixIdentity();
     SE::RenderTarget             m_sceneRT;
     SE::FullscreenQuad           m_fsQuad;
     SE::GBuffer                  m_gbuffer;
@@ -623,7 +631,7 @@ private:
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
     SE::WindowDesc desc;
-    desc.title  = L"FoxEngine — Sponza";
+    desc.title  = L"FoxEngine — Bistro";
     desc.width  = 1280;
     desc.height = 720;
 
