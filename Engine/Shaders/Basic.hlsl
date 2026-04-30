@@ -14,7 +14,7 @@ cbuffer LightCB : register(b1)
     float3 AmbientColor;
     float  _pad1;
     float3 CameraPos;
-    float  _pad2;
+    float  DebugLightMode; // 0=normal, 1=force lit, 2=show NdotL
     row_major matrix LightViewProj;
 };
 
@@ -85,8 +85,11 @@ float4 PS_Main(PSIn input) : SV_TARGET
     if (Unlit > 0.5f)
         return float4(AlbedoTint, 1.0f);
 
-    // Reconstruct TBN and transform normal map sample to world space
-    float3 tbn_n  = g_normal.Sample(g_sampler, input.TexCoord).rgb * 2.0f - 1.0f;
+    // Reconstruct TBN and transform normal map sample to world space.
+    // RG channels hold the tangent-space XY; Z is reconstructed so this
+    // works for both ATI2/BC5 (no stored Z) and BC3 (Z stored but redundant).
+    float2 tbn_rg = g_normal.Sample(g_sampler, input.TexCoord).rg * 2.0f - 1.0f;
+    float3 tbn_n  = float3(tbn_rg, sqrt(saturate(1.0f - tbn_rg.x*tbn_rg.x - tbn_rg.y*tbn_rg.y)));
     float3x3 TBN  = float3x3(normalize(input.T), normalize(input.B), normalize(input.N));
     float3 N      = normalize(mul(tbn_n, TBN));
 
@@ -127,8 +130,7 @@ float4 PS_Main(PSIn input) : SV_TARGET
             shadow /= 9.0f;
         }
     }
-
-    // Directional light
+    if (DebugLightMode > 0.5f) shadow = 1.0f;
     float3 L    = normalize(LightDir);
     float3 H    = normalize(L + V);
     float  diff = max(dot(N, L), 0.0f);
@@ -159,6 +161,10 @@ float4 PS_Main(PSIn input) : SV_TARGET
     // Debug: visualise shadow factor as greyscale when DebugShadow > 0.5
     if (DebugShadow > 0.5f)
         return float4(shadow, shadow, shadow, 1.0f);
+
+    // Debug: show NdotL as greyscale when DebugLightMode > 1.5
+    if (DebugLightMode > 1.5f)
+        return float4(diff, diff, diff, 1.0f);
 
     return float4(color, albedo.a);
 }

@@ -68,8 +68,10 @@ PSOut PS_Main(PSIn input)
     float4 albedo = g_albedo.Sample(g_sampler, input.TexCoord);
     o.Albedo = float4(albedo.rgb * AlbedoTint, 1.0f);
 
-    // World-space normal from normal map (RT1 is FLOAT, store raw [-1,1])
-    float3 tbn_n  = g_normal.Sample(g_sampler, input.TexCoord).rgb * 2.0f - 1.0f;
+    // World-space normal from normal map (RT1 is FLOAT, store raw [-1,1]).
+    // RG channels hold tangent-space XY; Z reconstructed — handles ATI2/BC5 and BC3.
+    float2 tbn_rg = g_normal.Sample(g_sampler, input.TexCoord).rg * 2.0f - 1.0f;
+    float3 tbn_n  = float3(tbn_rg, sqrt(saturate(1.0f - tbn_rg.x*tbn_rg.x - tbn_rg.y*tbn_rg.y)));
     float3x3 TBN  = float3x3(normalize(input.T), normalize(input.B), normalize(input.N));
     float3 N      = normalize(mul(tbn_n, TBN));
     o.Normal = float4(N, 0.0f);

@@ -16,7 +16,7 @@ cbuffer LightCB : register(b1)
     float3 LightDir;      float Shininess;
     float3 LightColor;    float _pad0;
     float3 AmbientColor;  float _pad1;
-    float3 CameraPos;     float _pad2;
+    float3 CameraPos;     float DebugLightMode; // 0=normal, 1=force lit, 2=show NdotL
     row_major matrix LightViewProj;
 };
 
@@ -116,6 +116,7 @@ float4 PS_Main(VSOutput input) : SV_TARGET
             shadow /= 9.0f;
         }
     }
+    if (DebugLightMode > 0.5f) shadow = 1.0f;
 
     // SSAO — sample AO factor
     float ao = 1.0f;
@@ -149,6 +150,10 @@ float4 PS_Main(VSOutput input) : SV_TARGET
 
         color += PointLights[i].Color * atten * (pd * kDiff * albedo + ps * F0);
     }
+
+    // Debug: show NdotL as greyscale when DebugLightMode > 1.5
+    if (DebugLightMode > 1.5f)
+        return float4(diff, diff, diff, 1.0f);
 
     return float4(color, 1.0f);
 }
