@@ -16,9 +16,11 @@ public:
     };
 
     // Directional light
-    float elevDeg      = 40.0f;
-    float azimDeg      = 30.0f;
-    float shininess    = 64.0f;
+    float elevDeg         = 40.0f;
+    float azimDeg         = 30.0f;
+    float shininess       = 64.0f;
+    float lightIntensity  = 3.0f;   // multiplier on lightColor
+    float debugLightMode  = 0.0f;   // 0=normal, 1=force lit (shadow=1), 2=show NdotL
     float lightColor[3]   = { 1.0f, 0.95f, 0.85f };
     float ambientColor[3] = { 0.06f, 0.06f, 0.08f };
 
