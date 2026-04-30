@@ -189,9 +189,9 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M45 | ~~PCF soft shadows~~ ✓ |
 | M46 | ~~Render-to-texture; fullscreen quad pass infrastructure~~ ✓ |
 | M47 | ~~Deferred shading (G-buffer: albedo, normal, depth, material)~~ ✓ |
-| M48 | Point light shadow maps (cube depth map, 1–2 closest lights) |
+| M48 | ~~Point light shadow maps (cube depth map, 1–2 closest lights)~~ ✓ |
 | M49 | ~~SSAO~~ ✓ |
-| M50 | HDR + tone mapping (Reinhard + ACES) |
+| M50 | ~~HDR + tone mapping (Reinhard + ACES)~~ ✓ |
 | M51 | Bloom (dual Kawase blur) |
 | M52 | IBL — diffuse irradiance + specular (split-sum) |
 
@@ -327,3 +327,21 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 - `SSAOParamsCB` (1248 bytes): Projection + InvProjection + View + samples[64] + screen/noise params.
 - ImGui controls: enable toggle, radius, bias, intensity, kernel size.
 - Logger now uses `_fsopen` with `_SH_DENYNO` for shared read access (allows log reading while app runs).
+
+### HDR + Tone Mapping (M50)
+- `ToneMap` class in `Engine/Renderer/ToneMap.h/.cpp`. Owned as value member in TestScene; runs in `OnPostProcess` after deferred scene RT is complete.
+- `m_deferredSceneRT` is `DXGI_FORMAT_R16G16B16A16_FLOAT` — HDR format so skybox (BC6H) can write values > 1.
+- `Apply(ctx, hdrSRV, w, h)`: caller must call `GetRenderer().BindBackBuffer(ctx)` first; reads HDR at t0, outputs to back buffer.
+- Operators: Reinhard (0) and ACES Narkowicz (1) — ACES is the default.
+- `gammaCorrect` defaults **false** — Bistro albedos are already sRGB-encoded; applying gamma encode on top double-encodes them (washout). Proper fix is texture sRGB linearisation at load time (M52). Keep off until then.
+- SSAO tuning for outdoor Bistro: `radius=1.0`, `intensity=1.0`, `minAO=0.2` floor prevents full occlusion blackout.
+
+### Point Light Shadows (M48)
+- `PointShadowMap` class in `Engine/Renderer/PointShadowMap.h/.cpp`. Array of 2 in TestScene (`m_pointShadowMaps[2]`).
+- Stores **linear depth** (`dist / lightFar`) in `R32_FLOAT` `TextureCube` — avoids non-linear hardware depth issues with cube map sampling.
+- 6 separate RTVs (one per face) + shared D32_FLOAT DSV. Face matrices use D3D11 LH cube convention: +Y face up=(0,0,-1), -Y face up=(0,0,+1).
+- Shadow depth shader: `PointShadowDepth.hlsl` — VS passes worldPos through, PS writes `length(worldPos - LightPos) / LightFar`.
+- **SRV/RTV hazard prevention**: `BeginFace` explicitly unbinds t6/t7 before binding as RTV; `LightingPass` unbinds t4–t7 on exit.
+- `DeferredLighting.hlsl`: `TextureCube<float> g_pointShadow0/1` at t6/t7, `g_cubeSampler` (linear-clamp) at s2.
+- `DeferredCB` (b0) gains `NumPointShadowCasters` (int) + `PointShadowBias` (float). Convention: first N point lights in `PointLightCB` are shadow casters (indices 0..N-1).
+- Resolution: 256×256 per face (6 faces × 2 lights = 12 depth passes per frame). Toggle via ImGui "Shadow Casters" slider (0–2).
