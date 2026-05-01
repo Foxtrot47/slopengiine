@@ -42,7 +42,7 @@ AssetHandle<Texture2D> AssetManager::GetTexture(const std::wstring& path, bool s
     bool isDDS = path.size() >= 4 &&
                  _wcsicmp(path.c_str() + path.size() - 4, L".dds") == 0;
     if (isDDS)
-        ok = tex->LoadFromDDS(m_device, path.c_str());
+        ok = tex->LoadFromDDS(m_device, path.c_str(), sRGB);
     else
         ok = tex->LoadFromFile(m_device, m_context, path.c_str(), sRGB);
 

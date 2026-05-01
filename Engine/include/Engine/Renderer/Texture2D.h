@@ -15,7 +15,8 @@ public:
     bool LoadFromFile(ID3D11Device* device, ID3D11DeviceContext* ctx, const wchar_t* path, bool sRGB = false);
 
     // Load a DDS file via DirectXTex (BC1-BC7, HDR, cubemaps). Uses embedded mips.
-    bool LoadFromDDS(ID3D11Device* device, const wchar_t* path);
+    // sRGB=true reinterprets the format as its SRGB equivalent so the GPU linearizes on sample.
+    bool LoadFromDDS(ID3D11Device* device, const wchar_t* path, bool sRGB = false);
 
     // Create directly from a raw RGBA8 pixel buffer. Generates a full mip chain.
     bool CreateFromMemory(ID3D11Device* device, ID3D11DeviceContext* ctx,

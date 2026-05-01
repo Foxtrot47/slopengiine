@@ -46,7 +46,22 @@ bool Texture2D::LoadFromFile(ID3D11Device* device, ID3D11DeviceContext* ctx, con
     return CreateSRV(device, ctx, pixels.data(), width, height, sRGB);
 }
 
-bool Texture2D::LoadFromDDS(ID3D11Device* device, const wchar_t* path)
+// Maps a UNORM format to its SRGB equivalent. Bytes are identical; GPU interprets on sample.
+// Formats already SRGB, or without an SRGB variant, are returned unchanged.
+static DXGI_FORMAT MakeSRGBFormat(DXGI_FORMAT fmt)
+{
+    switch (fmt)
+    {
+        case DXGI_FORMAT_R8G8B8A8_UNORM: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        case DXGI_FORMAT_BC1_UNORM:      return DXGI_FORMAT_BC1_UNORM_SRGB;
+        case DXGI_FORMAT_BC2_UNORM:      return DXGI_FORMAT_BC2_UNORM_SRGB;
+        case DXGI_FORMAT_BC3_UNORM:      return DXGI_FORMAT_BC3_UNORM_SRGB;
+        case DXGI_FORMAT_BC7_UNORM:      return DXGI_FORMAT_BC7_UNORM_SRGB;
+        default:                         return fmt;
+    }
+}
+
+bool Texture2D::LoadFromDDS(ID3D11Device* device, const wchar_t* path, bool sRGB)
 {
     using namespace DirectX;
 
@@ -78,12 +93,19 @@ bool Texture2D::LoadFromDDS(ID3D11Device* device, const wchar_t* path)
         if (SUCCEEDED(hr)) { image = std::move(converted); meta = image.GetMetadata(); }
     }
 
+    // Reinterpret as SRGB so the hardware linearizes on sample. The stored bytes are
+    // identical between UNORM and UNORM_SRGB for all compressed and RGBA8 formats.
+    if (sRGB)
+        meta.format = MakeSRGBFormat(meta.format);
+
     ComPtr<ID3D11Resource> resource;
     hr = CreateTexture(device, image.GetImages(), image.GetImageCount(), meta,
                        resource.GetAddressOf());
     if (FAILED(hr))
     {
-        // Try once more after forcing to RGBA8
+        // Try once more after forcing to RGBA8 (with correct sRGB variant).
+        DXGI_FORMAT fallbackFmt = sRGB ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
+                                       : DXGI_FORMAT_R8G8B8A8_UNORM;
         ScratchImage fallback;
         if (IsCompressed(meta.format))
             Decompress(image.GetImages(), image.GetImageCount(), meta,
@@ -94,9 +116,10 @@ bool Texture2D::LoadFromDDS(ID3D11Device* device, const wchar_t* path)
 
         if (fallback.GetImageCount() > 0)
         {
-            meta = fallback.GetMetadata();
-            hr   = CreateTexture(device, fallback.GetImages(), fallback.GetImageCount(),
-                                 meta, resource.ReleaseAndGetAddressOf());
+            meta        = fallback.GetMetadata();
+            meta.format = fallbackFmt;
+            hr = CreateTexture(device, fallback.GetImages(), fallback.GetImageCount(),
+                               meta, resource.ReleaseAndGetAddressOf());
         }
 
         if (FAILED(hr))
@@ -118,6 +141,8 @@ bool Texture2D::LoadFromDDS(ID3D11Device* device, const wchar_t* path)
     hr = device->CreateShaderResourceView(m_texture.Get(), nullptr, &m_srv);
     if (FAILED(hr)) { SE_LOG_ERROR("Texture2D: DDS CreateSRV failed: 0x%08X", hr); return false; }
 
+    SE_LOG_INFO("Texture2D: DDS loaded %ux%u fmt=%u%s", m_width, m_height,
+                (unsigned)meta.format, sRGB ? " (sRGB)" : "");
     return true;
 }
 
