@@ -93,10 +93,15 @@ bool Texture2D::LoadFromDDS(ID3D11Device* device, const wchar_t* path, bool sRGB
         if (SUCCEEDED(hr)) { image = std::move(converted); meta = image.GetMetadata(); }
     }
 
-    // Reinterpret as SRGB so the hardware linearizes on sample. The stored bytes are
-    // identical between UNORM and UNORM_SRGB for all compressed and RGBA8 formats.
+    // Reinterpret as SRGB so the hardware linearizes on sample. OverrideFormat updates
+    // both metadata and all per-image format fields without touching bytes — required
+    // because CreateTexture() validates that meta.format matches images[i].format.
     if (sRGB)
-        meta.format = MakeSRGBFormat(meta.format);
+    {
+        DXGI_FORMAT srgbFmt = MakeSRGBFormat(meta.format);
+        if (srgbFmt != meta.format && SUCCEEDED(image.OverrideFormat(srgbFmt)))
+            meta = image.GetMetadata();
+    }
 
     ComPtr<ID3D11Resource> resource;
     hr = CreateTexture(device, image.GetImages(), image.GetImageCount(), meta,
@@ -116,8 +121,8 @@ bool Texture2D::LoadFromDDS(ID3D11Device* device, const wchar_t* path, bool sRGB
 
         if (fallback.GetImageCount() > 0)
         {
-            meta        = fallback.GetMetadata();
-            meta.format = fallbackFmt;
+            if (sRGB) fallback.OverrideFormat(fallbackFmt);
+            meta = fallback.GetMetadata();
             hr = CreateTexture(device, fallback.GetImages(), fallback.GetImageCount(),
                                meta, resource.ReleaseAndGetAddressOf());
         }
