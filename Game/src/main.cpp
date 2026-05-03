@@ -26,6 +26,7 @@
 #include "Engine/Renderer/ToneMap.h"
 #include "Engine/Renderer/SSAO.h"
 #include "Engine/Renderer/PointShadowMap.h"
+#include "Engine/Renderer/Bloom.h"
 #include "Engine/Input/GamepadState.h"
 
 using namespace DirectX;
@@ -110,6 +111,10 @@ public:
         // Point shadow maps (M48) — 2 slots, 256x256 per cube face
         for (int i = 0; i < 2; ++i)
             if (!m_pointShadowMaps[i].Init(device, GetShaders(), 256)) return false;
+
+        // Bloom (M51)
+        if (!m_bloom.Init(device, GetShaders(),
+                GetWindow().GetWidth(), GetWindow().GetHeight())) return false;
 
         if (m_mesh)
         {
@@ -373,7 +378,12 @@ protected:
                 m_deferredSceneRT.Init(GetRenderer().GetDevice(), w, h,
                     DXGI_FORMAT_R16G16B16A16_FLOAT);
                 m_ssao.Resize(GetRenderer().GetDevice(), w, h);
+                m_bloom.Resize(GetRenderer().GetDevice(), w, h);
             }
+
+            // Bloom: accumulate bright areas additively into HDR scene RT
+            if (m_bloom.enabled)
+                m_bloom.Apply(ctx, m_deferredSceneRT);
 
             // Tone map deferred HDR scene → back buffer
             GetRenderer().BindBackBuffer(ctx);
@@ -541,6 +551,15 @@ private:
             m_toneMap.op = static_cast<SE::ToneMap::Operator>(op);
             ImGui::Checkbox("Gamma Correct", &m_toneMap.gammaCorrect);
             ImGui::TextDisabled("(gamma needs texture linearisation — M52)");
+            ImGui::Separator();
+            ImGui::Text("Bloom");
+            ImGui::Checkbox("Enable Bloom", &m_bloom.enabled);
+            if (m_bloom.enabled)
+            {
+                ImGui::SliderFloat("Threshold",       &m_bloom.threshold, 0.0f, 4.0f,  "%.2f");
+                ImGui::SliderFloat("Strength",        &m_bloom.intensity, 0.0f, 0.5f,  "%.3f");
+                ImGui::SliderFloat("Scatter",         &m_bloom.scatter,   0.0f, 1.0f,  "%.2f");
+            }
         }
         ImGui::Separator();
         ImGui::SliderFloat("Shadow Bias", &m_pointShadowBias, 0.001f, 0.1f, "%.4f");
@@ -677,6 +696,7 @@ private:
     SE::SSAO                     m_ssao;
     SE::ToneMap                  m_toneMap;
     SE::PointShadowMap           m_pointShadowMaps[2];
+    SE::Bloom                    m_bloom;
     bool                         m_lightCastsShadow[8] = { true };  // only [0..1] used; rest false
     float                        m_pointShadowBias       = 0.015f;
     SE::PhysicsWorld::RaycastHit m_rayHit        = {};

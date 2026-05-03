@@ -192,8 +192,10 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M48 | ~~Point light shadow maps (cube depth map, 1–2 closest lights)~~ ✓ |
 | M49 | ~~SSAO~~ ✓ |
 | M50 | ~~HDR + tone mapping (Reinhard + ACES)~~ ✓ |
-| M51 | Bloom (dual Kawase blur) |
-| M52 | IBL — diffuse irradiance + specular (split-sum) |
+| M50b | ~~Cook-Torrance PBR BRDF (GGX NDF, Smith geometry, Schlick Fresnel; replaces Blinn-Phong in deferred pass)~~ ✓ |
+| M51 | ~~Bloom (dual Kawase blur)~~ ✓ |
+| M52 | ~~IBL — diffuse irradiance + specular (split-sum); sRGB pipeline; HDR panorama support~~ ✓ |
+| M52b | ~~Auto-exposure / EV calibration~~ ✓ |
 
 ### Phase 9 — Animation
 
@@ -345,3 +347,14 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 - `DeferredLighting.hlsl`: `TextureCube<float> g_pointShadow0/1` at t6/t7, `g_cubeSampler` (linear-clamp) at s2.
 - `DeferredCB` (b0) gains `NumPointShadowCasters` (int) + `PointShadowBias` (float). Convention: first N point lights in `PointLightCB` are shadow casters (indices 0..N-1).
 - Resolution: 256×256 per face (6 faces × 2 lights = 12 depth passes per frame). Toggle via ImGui "Shadow Casters" slider (0–2).
+
+### Bloom (M51)
+- `Bloom` class in `Engine/Renderer/Bloom.h/.cpp`. Owned as value member in TestScene; runs in `OnPostProcess` between scene completion and tone mapping.
+- `Apply(ctx, hdrRT)`: reads from `hdrRT.GetSRV()`, writes bloom additively back into `hdrRT` via additive blend state.
+- 5-level dual Kawase chain: `m_downChain[5]` (W/2 → W/32) + `m_upChain[4]` (W/16 → W/2). All RTs are `R16G16B16A16_FLOAT`.
+- **Threshold pass** (half-res): soft-knee extraction — `rq = (clamp(lum-thresh+knee, 0, 2*knee))² / 4*knee`; weights color by `max(rq, lum-thresh) / lum`.
+- **Downsample** (5-tap bilinear dual-filter): `centre×4 + 4 diagonal bilinear taps`, divide by 8. Uses source texel size as UV offset.
+- **Upsample** (9-tap tent): `lerp(downChain[k], KawaseUp(upChain[k+1]), scatter)`. Each level blends the coarser bloom with same-level fine detail.
+- **Composite**: KawaseUp upsample of `upChain[0]` (half-res → full-res) × `intensity`, rendered with `ONE+ONE` additive blend into HDR RT.
+- Uses `DrawGeometryOnly` + manual VS/PS/sampler bind (linear clamp) instead of `FullscreenQuad::Draw` to avoid the point sampler override.
+- Bloom only active in the deferred path (needs `m_deferredSceneRT`). ImGui controls: enable, threshold (0–4), intensity (0–0.5), scatter (0–1).
