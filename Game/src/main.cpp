@@ -2,6 +2,7 @@
 #include <DirectXMath.h>
 #include <imgui.h>
 #include <algorithm>
+#include <filesystem>
 #include "Engine/Core/Engine.h"
 #include "Engine/Core/Logger.h"
 #include "Engine/Assets/AssetManager.h"
@@ -10,6 +11,8 @@
 #include "Engine/Physics/OBB.h"
 #include "Engine/Physics/CharacterController.h"
 #include "Engine/Scene/Scene.h"
+#include "Engine/Scene/SceneDescriptor.h"
+#include "Engine/Scene/SceneLoader.h"
 #include "Engine/Scene/TransformComponent.h"
 #include "Engine/Scene/Camera/CameraComponent.h"
 #include "Engine/Scene/Camera/CameraController.h"
@@ -30,81 +33,157 @@ using namespace DirectX;
 class TestScene : public SE::Engine
 {
 public:
-    bool Setup()
+    bool Setup(const std::string& scenePath = "")
     {
         ID3D11Device* device = GetRenderer().GetDevice();
 
         if (!m_skybox.Init(device, GetRenderer().GetStateCache(), GetShaders())) return false;
-        if (!m_skybox.LoadPanorama(device,
-                L"Assets/Bistro/san_giuseppe_bridge_4k.dds")) return false;
-
         if (!m_lights.Init(device))                return false;
         if (!m_pipeline.Init(device, GetAssets(), GetShaders())) return false;
         if (!m_shadowMap.Init(device, GetShaders(), 2048)) return false;
 
-        m_mesh    = GetAssets().GetMesh("Assets/Bistro/BistroExterior.fbx");
-        if (!m_mesh) return false;
-        m_subMats = m_pipeline.LoadMeshMaterials(GetAssets(), *m_mesh);
-
-        // Locked-in sun + ambient for Bistro exterior
-        m_lights.elevDeg        = 63.0f;
-        m_lights.azimDeg        = -134.6f;
-        // One default point light for M48 point shadow testing
-        m_lights.numLights                  = 1;
-        m_lights.lights[0].position         = { -440.0f, 130.0f, 65.0f };
-        m_lights.lights[0].color            = { 1.0f, 0.9f, 0.7f };
-        m_lights.lights[0].radius           = 100.0f;
-
-        SE::Entity* camEnt       = m_scene.CreateEntity("Camera");
-        m_camera                 = camEnt->AddComponent<SE::CameraComponent>();
-        m_camera->nearZ          = 0.150f;
-        m_camera->farZ           = 4000.0f;
-        m_camCtrl.freeFly.eye      = { -479.0f, 112.0f, 78.0f };
-        m_camCtrl.freeFly.yawDeg   = 0.0f;
-        m_camCtrl.freeFly.pitchDeg = 0.0f;
-        m_camCtrl.Update(0.0f, GetInput(), *m_camera, GetWindow().GetHandle());
-
-        // Bistro scene entity with per-entity transform
-        SE::Entity* bistroEnt       = m_scene.CreateEntity("Bistro");
-        m_bistroTransform           = bistroEnt->AddComponent<SE::TransformComponent>();
-        m_bistroTransform->scale    = 0.5f;
-        m_bistroTransform->eulerDeg = { 90.0f, 0.0f, 0.0f }; // rotation in degrees: pitch=90
-
-        SE::Entity* ballEnt        = m_scene.CreateEntity("PhysBall");
-        m_ballTransform            = ballEnt->AddComponent<SE::TransformComponent>();
-        m_ballRigidBody            = ballEnt->AddComponent<SE::RigidBodyComponent>();
-        m_ballTransform->scale     = m_ballRadius;
-        ResetBall();
-        m_physicsWorld.AddSphere(m_ballTransform, m_ballRigidBody, m_ballRadius);
-        m_obbFloor = SE::OBB::FromAABB({ -30.0f, m_floorY - 0.5f, -30.0f },
-                                        {  30.0f, m_floorY,        30.0f });
-        m_physicsWorld.AddStaticOBB(m_obbFloor, 0.6f, 0.4f);
-
-        m_cc.position = { -479.0f, 5.0f, 78.0f };
-
-        // Forward HDR render target — all forward rendering goes here before tonemapping
+        // Forward HDR render target
         if (!m_forwardHDR_RT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight(),
                 DXGI_FORMAT_R16G16B16A16_FLOAT, /*withDepth=*/true))
             return false;
 
-        // Tone mapping (M50)
+        // Tone mapping
         if (!m_toneMap.Init(device, GetShaders())) return false;
 
-        // Point shadow maps (M48) — 2 slots, 256x256 per cube face
+        // Point shadow maps — 2 slots, 256x256 per cube face
         for (int i = 0; i < 2; ++i)
             if (!m_pointShadowMaps[i].Init(device, GetShaders(), 256)) return false;
 
-        // Bloom (M51)
+        // Bloom
         if (!m_bloom.Init(device, GetShaders(),
                 GetWindow().GetWidth(), GetWindow().GetHeight())) return false;
 
-        if (m_mesh)
+        // Scan available scenes
+        m_sceneFiles = SE::SceneLoader::ScanSceneDirectory("Assets/Scenes");
+        if (m_sceneFiles.empty())
         {
-            const SE::AABB& b = m_mesh->GetBounds();
-            SE_LOG_INFO("Bistro AABB: min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f)",
-                b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z);
+            SE_LOG_ERROR("No scene files found in Assets/Scenes/");
+            return false;
         }
-        SE_LOG_INFO("TestScene ready — Bistro Exterior (%u submeshes)", m_mesh->GetSubMeshCount());
+
+        // Determine which scene to load
+        std::string targetScene = scenePath;
+        if (targetScene.empty() && !m_sceneFiles.empty())
+            targetScene = m_sceneFiles[0];
+
+        if (!ApplyScene(targetScene))
+            return false;
+
+        SE_LOG_INFO("TestScene ready — %s", m_currentDesc.name.c_str());
+        return true;
+    }
+
+    bool ApplyScene(const std::string& scenePath)
+    {
+        SE::SceneDescriptor desc;
+        if (!SE::SceneLoader::LoadFromFile(scenePath, desc))
+            return false;
+
+        // Track current scene
+        m_currentScenePath = scenePath;
+        m_currentDesc      = desc;
+        for (int i = 0; i < (int)m_sceneFiles.size(); ++i)
+            if (m_sceneFiles[i] == scenePath) { m_selectedScene = i; break; }
+
+        ID3D11Device* device = GetRenderer().GetDevice();
+
+        // --- Skybox ---
+        std::wstring skyboxW(desc.skybox.begin(), desc.skybox.end());
+        if (!desc.skybox.empty())
+            m_skybox.LoadPanorama(device, skyboxW.c_str());
+
+        // --- Mesh ---
+        m_mesh.reset();
+        m_subMats.clear();
+        if (!desc.mesh.path.empty())
+        {
+            m_mesh = GetAssets().GetMesh(desc.mesh.path);
+            if (m_mesh)
+                m_subMats = m_pipeline.LoadMeshMaterials(GetAssets(), *m_mesh);
+            else
+                SE_LOG_WARN("Failed to load mesh: %s", desc.mesh.path.c_str());
+        }
+
+        // --- Lights ---
+        m_lights.elevDeg        = desc.sun.elevation;
+        m_lights.azimDeg        = desc.sun.azimuth;
+        m_lights.lightIntensity = desc.sun.intensity;
+        m_lights.lightColor[0]  = desc.sun.color[0];
+        m_lights.lightColor[1]  = desc.sun.color[1];
+        m_lights.lightColor[2]  = desc.sun.color[2];
+        m_lights.iblIntensity   = desc.iblIntensity;
+
+        m_lights.numLights = (int)desc.pointLights.size();
+        for (int i = 0; i < m_lights.numLights && i < 8; ++i)
+        {
+            auto& pl = desc.pointLights[i];
+            m_lights.lights[i].position = { pl.position[0], pl.position[1], pl.position[2] };
+            m_lights.lights[i].color    = { pl.color[0], pl.color[1], pl.color[2] };
+            m_lights.lights[i].radius   = pl.radius;
+            m_lightCastsShadow[i]       = pl.castShadow;
+        }
+
+        // --- Scene entities (rebuild) ---
+        m_scene = SE::Scene{};
+        SE::Entity* camEnt = m_scene.CreateEntity("Camera");
+        m_camera           = camEnt->AddComponent<SE::CameraComponent>();
+        m_camera->nearZ    = desc.camera.nearZ;
+        m_camera->farZ     = desc.camera.farZ;
+        m_camCtrl.freeFly.eye      = { desc.camera.eye[0], desc.camera.eye[1], desc.camera.eye[2] };
+        m_camCtrl.freeFly.yawDeg   = desc.camera.yaw;
+        m_camCtrl.freeFly.pitchDeg = desc.camera.pitch;
+        m_camCtrl.Update(0.0f, GetInput(), *m_camera, GetWindow().GetHandle());
+
+        // Mesh entity with transform
+        SE::Entity* meshEnt = m_scene.CreateEntity("SceneMesh");
+        m_bistroTransform          = meshEnt->AddComponent<SE::TransformComponent>();
+        m_bistroTransform->position = { desc.mesh.position[0], desc.mesh.position[1], desc.mesh.position[2] };
+        m_bistroTransform->eulerDeg = { desc.mesh.rotation[0], desc.mesh.rotation[1], desc.mesh.rotation[2] };
+        m_bistroTransform->scale    = desc.mesh.scale;
+
+        // Physics ball entity
+        SE::Entity* ballEnt = m_scene.CreateEntity("PhysBall");
+        m_ballTransform     = ballEnt->AddComponent<SE::TransformComponent>();
+        m_ballRigidBody     = ballEnt->AddComponent<SE::RigidBodyComponent>();
+        m_ballRadius        = desc.physics.ballRadius;
+        m_ballTransform->scale = m_ballRadius;
+        m_ballSpawn = { desc.physics.ballSpawn[0], desc.physics.ballSpawn[1], desc.physics.ballSpawn[2] };
+        ResetBall();
+
+        // --- Physics world (rebuild) ---
+        m_physicsWorld = SE::PhysicsWorld{};
+        m_physicsWorld.AddSphere(m_ballTransform, m_ballRigidBody, m_ballRadius);
+        m_floorY = desc.physics.floor.max[1];
+        m_obbFloor = SE::OBB::FromAABB(
+            { desc.physics.floor.min[0], desc.physics.floor.min[1], desc.physics.floor.min[2] },
+            { desc.physics.floor.max[0], desc.physics.floor.max[1], desc.physics.floor.max[2] });
+        m_physicsWorld.AddStaticOBB(m_obbFloor, desc.physics.floor.friction, desc.physics.floor.restitution);
+
+        // Character controller
+        m_cc = SE::CharacterController{};
+        m_cc.position = { desc.physics.characterSpawn[0], desc.physics.characterSpawn[1], desc.physics.characterSpawn[2] };
+        m_gravityEnabled        = desc.physics.gravity;
+        m_cc.gravityEnabled     = desc.physics.gravity;
+        m_ballRigidBody->useGravity = desc.physics.gravity;
+
+        // --- Post-process settings ---
+        m_toneMap.op           = static_cast<SE::ToneMap::Operator>(desc.toneMapping.op);
+        m_toneMap.exposure     = desc.toneMapping.exposure;
+        m_toneMap.gammaCorrect = desc.toneMapping.gammaCorrect;
+        m_bloom.enabled        = desc.bloom.enabled;
+        m_bloom.threshold      = desc.bloom.threshold;
+        m_bloom.intensity      = desc.bloom.intensity;
+        m_bloom.scatter        = desc.bloom.scatter;
+
+        // Update window title
+        std::wstring title = L"FoxEngine " + std::wstring(desc.name.begin(), desc.name.end());
+        SetWindowTextW(GetWindow().GetHandle(), title.c_str());
+
         return true;
     }
 
@@ -117,6 +196,13 @@ public:
 protected:
     void OnUpdate() override
     {
+        // Handle pending scene load (deferred to avoid mid-frame state issues)
+        if (!m_pendingSceneLoad.empty())
+        {
+            ApplyScene(m_pendingSceneLoad);
+            m_pendingSceneLoad.clear();
+        }
+
         ID3D11DeviceContext* ctx = GetRenderer().GetContext();
         float dt     = GetClock().GetDeltaTime();
         float aspect = (float)GetWindow().GetWidth() / (float)GetWindow().GetHeight();
@@ -258,8 +344,11 @@ protected:
         m_pipeline.SetMaterialParams(ctx,
             { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic,
             m_debugShadow ? 1.0f : 0.0f);
-        m_pipeline.SubmitMesh(*m_mesh, m_meshWorld, m_subMats);
-        m_pipeline.Flush(ctx);
+        if (m_mesh)
+        {
+            m_pipeline.SubmitMesh(*m_mesh, m_meshWorld, m_subMats);
+            m_pipeline.Flush(ctx);
+        }
         m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
         m_shadowMap.Unbind(ctx);
 
@@ -349,6 +438,40 @@ private:
                 m_mesh ? m_mesh->GetSubMeshCount() : 0u);
             dl->AddText(ImVec2(10.0f, 26.0f), IM_COL32(200, 200, 200, 180), buf);
         }
+
+        // --- Scene Picker ---
+        ImGui::Begin("Scene");
+        if (!m_sceneFiles.empty())
+        {
+            auto getFilename = [](const std::string& path) -> std::string {
+                auto pos = path.find_last_of("\\/");
+                return (pos != std::string::npos) ? path.substr(pos + 1) : path;
+            };
+
+            if (ImGui::BeginCombo("Scene File", getFilename(m_sceneFiles[m_selectedScene]).c_str()))
+            {
+                for (int i = 0; i < (int)m_sceneFiles.size(); ++i)
+                {
+                    bool selected = (i == m_selectedScene);
+                    if (ImGui::Selectable(getFilename(m_sceneFiles[i]).c_str(), selected))
+                    {
+                        if (i != m_selectedScene)
+                        {
+                            m_pendingSceneLoad = m_sceneFiles[i];
+                        }
+                    }
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            if (ImGui::Button("Reload"))
+                m_pendingSceneLoad = m_sceneFiles[m_selectedScene];
+            ImGui::SameLine();
+            if (ImGui::Button("Rescan"))
+                m_sceneFiles = SE::SceneLoader::ScanSceneDirectory("Assets/Scenes");
+        }
+        ImGui::Text("Active: %s", m_currentDesc.name.c_str());
+        ImGui::End();
 
         // --- Camera ---
         ImGui::Begin("Camera");
@@ -601,22 +724,47 @@ private:
     SE::ToneMap                  m_toneMap;
     SE::PointShadowMap           m_pointShadowMaps[2];
     SE::Bloom                    m_bloom;
-    bool                         m_lightCastsShadow[8] = { true };  // only [0..1] used; rest false
+    bool                         m_lightCastsShadow[8] = { true };
     float                        m_pointShadowBias       = 0.015f;
     SE::PhysicsWorld::RaycastHit m_rayHit        = {};
     bool                         m_rayHitValid   = false;
+
+    // Scene loader state
+    std::vector<std::string> m_sceneFiles;
+    int                      m_selectedScene    = 0;
+    std::string              m_currentScenePath;
+    SE::SceneDescriptor      m_currentDesc;
+    std::string              m_pendingSceneLoad;
 };
 
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR lpCmdLine, int)
 {
     SE::WindowDesc desc;
-    desc.title  = L"FoxEngine — Bistro";
+    desc.title  = L"FoxEngine";
     desc.width  = 1280;
     desc.height = 720;
 
+    // Parse --scene argument
+    std::string scenePath;
+    if (lpCmdLine && strlen(lpCmdLine) > 0)
+    {
+        std::string args(lpCmdLine);
+        auto pos = args.find("--scene");
+        if (pos != std::string::npos)
+        {
+            pos += 7; // skip "--scene"
+            while (pos < args.size() && (args[pos] == ' ' || args[pos] == '=')) ++pos;
+            auto end = args.find(' ', pos);
+            scenePath = args.substr(pos, end - pos);
+            // If just a filename, prepend Assets/Scenes/
+            if (scenePath.find('/') == std::string::npos && scenePath.find('\\') == std::string::npos)
+                scenePath = "Assets/Scenes/" + scenePath;
+        }
+    }
+
     TestScene scene;
     if (!scene.Initialize(desc)) return 1;
-    if (!scene.Setup())          return 1;
+    if (!scene.Setup(scenePath)) return 1;
     scene.Run();
     scene.Shutdown();
     return 0;

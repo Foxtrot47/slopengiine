@@ -1,0 +1,50 @@
+{
+  "name": "Sun Temple",
+  "mesh": {
+    "path": "Assets/SunTemple/SunTemple.fbx",
+    "transform": {
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "scale": 0.01
+    }
+  },
+  "skybox": "Assets/SunTemple/SunTemple_Skybox.dds",
+  "camera": {
+    "eye": [0, 3, -10],
+    "yaw": 0,
+    "pitch": 0,
+    "nearZ": 0.1,
+    "farZ": 2000
+  },
+  "sun": {
+    "elevation": 3.9,
+    "azimuth": -10.2,
+    "intensity": 2.0,
+    "color": [1, 0.6, 0.352]
+  },
+  "iblIntensity": 1.2,
+  "pointLights": [ ],
+  "physics": {
+    "floor": {
+      "min": [-50, -0.5, -50],
+      "max": [50, 0, 50],
+      "friction": 0.6,
+      "restitution": 0.3
+    },
+    "ballSpawn": [0, 15, 0],
+    "ballRadius": 0.5,
+    "characterSpawn": [0, 3, -10],
+    "gravity": true
+  },
+  "toneMapping": {
+    "operator": "ACES",
+    "exposure": 1.2,
+    "gammaCorrect": false
+  },
+  "bloom": {
+    "enabled": true,
+    "threshold": 1.5,
+    "intensity": 0.12,
+    "scatter": 0.65
+  }
+}

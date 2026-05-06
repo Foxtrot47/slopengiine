@@ -1,0 +1,50 @@
+{
+  "name": "Sponza Atrium",
+  "mesh": {
+    "path": "Assets/Sponza/Sponza.gltf",
+    "transform": {
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "scale": 1.0
+    }
+  },
+  "skybox": "Assets/Bistro/san_giuseppe_bridge_4k.dds",
+  "camera": {
+    "eye": [0, 5, 0],
+    "yaw": 0,
+    "pitch": 0,
+    "nearZ": 0.1,
+    "farZ": 1000
+  },
+  "sun": {
+    "elevation": 50.0,
+    "azimuth": -90.0,
+    "intensity": 1.5,
+    "color": [1, 0.98, 0.95]
+  },
+  "iblIntensity": 1.0,
+  "pointLights": [],
+  "physics": {
+    "floor": {
+      "min": [-20, -0.5, -20],
+      "max": [20, 0, 20],
+      "friction": 0.6,
+      "restitution": 0.4
+    },
+    "ballSpawn": [0, 10, 0],
+    "ballRadius": 0.5,
+    "characterSpawn": [0, 2, 0],
+    "gravity": true
+  },
+  "toneMapping": {
+    "operator": "ACES",
+    "exposure": 1.0,
+    "gammaCorrect": false
+  },
+  "bloom": {
+    "enabled": true,
+    "threshold": 1.2,
+    "intensity": 0.08,
+    "scatter": 0.7
+  }
+}

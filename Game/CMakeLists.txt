@@ -28,9 +28,34 @@ add_custom_command(TARGET Game POST_BUILD
     COMMENT "Copying Engine shaders"
 )
 
-# Bistro root files
-add_custom_command(TARGET Game POST_BUILD
-    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -Command
-        "New-Item -Force -ItemType Directory '$<TARGET_FILE_DIR:Game>/Assets/Bistro' | Out-Null; Get-ChildItem -Path '${CMAKE_SOURCE_DIR}/Assets/Bistro' -File | Copy-Item -Destination '$<TARGET_FILE_DIR:Game>/Assets/Bistro' -Force"
-    COMMENT "Copying Assets"
+# Copy pre-existing DDS files from source to build directory
+add_custom_target(CopyPreExistingAssets
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/Assets"
+        "${CMAKE_BINARY_DIR}/Assets"
+    COMMENT "Copying source Assets to build directory"
 )
+
+# Texture conversion — converts non-DDS textures (TGA, PNG, HDR, EXR) to BC-compressed DDS
+# Output goes to CMAKE_BINARY_DIR/Assets (build directory, alongside pre-existing DDS)
+add_custom_target(ConvertTextures
+    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+        "${CMAKE_SOURCE_DIR}/Tools/ConvertTextures.ps1"
+        -SourceDir "${CMAKE_SOURCE_DIR}/Assets"
+        -OutputDir "${CMAKE_BINARY_DIR}/Assets"
+        -ToolPath "${CMAKE_SOURCE_DIR}/Tools/texconv.exe"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    COMMENT "Converting textures to DDS..."
+    DEPENDS CopyPreExistingAssets
+)
+
+# Copy final Assets (pre-existing + converted) to runtime directory
+add_custom_command(TARGET Game POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_BINARY_DIR}/Assets"
+        "$<TARGET_FILE_DIR:Game>/Assets"
+    COMMENT "Copying Assets to runtime directory"
+    DEPENDS ConvertTextures
+)
+
+add_dependencies(Game ConvertTextures)

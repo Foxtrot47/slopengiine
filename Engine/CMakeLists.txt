@@ -12,6 +12,7 @@ target_include_directories(FoxEngine
 find_package(assimp CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(directxtex CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 target_link_libraries(FoxEngine PUBLIC
     d3d11.lib
@@ -21,6 +22,7 @@ target_link_libraries(FoxEngine PUBLIC
     assimp::assimp
     imgui::imgui
     Microsoft::DirectXTex
+    nlohmann_json::nlohmann_json
 )
 
 target_compile_definitions(FoxEngine PUBLIC

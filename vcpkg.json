@@ -4,7 +4,8 @@
   "dependencies": [
     "assimp",
     { "name": "imgui", "features": ["dx11-binding", "win32-binding"] },
-    "directxtex"
+    "directxtex",
+    "nlohmann-json"
   ],
   "builtin-baseline": "7147ac1294ef9647e8679e1183ac440a5d0a63b7"
 }
