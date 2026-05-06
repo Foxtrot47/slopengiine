@@ -30,7 +30,17 @@ public:
     std::vector<SubMat> LoadMeshMaterials(AssetManager& assets, const Mesh& mesh);
 
     // Bind shaders + shared pipeline state; cache view/proj for this frame.
+    // Also binds a default ForwardShadowCB (b4) with zero point shadow casters.
     void Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, DirectX::XMMATRIX proj);
+
+    // Bind equirectangular HDR panorama for IBL (t4). Pass nullptr to unbind.
+    void BindEnvironment(ID3D11DeviceContext* ctx, ID3D11ShaderResourceView* panoramaSRV);
+
+    // Bind point shadow cube maps (t5-t6) + ForwardShadowCB (b4). Pass nullptr SRVs if unused.
+    void BindPointShadows(ID3D11DeviceContext* ctx,
+                          ID3D11ShaderResourceView* psrv0,
+                          ID3D11ShaderResourceView* psrv1,
+                          int numCasters, float bias);
 
     // Upload and bind MaterialParamsCB (b3).
     void SetMaterialParams(ID3D11DeviceContext* ctx,
@@ -65,6 +75,13 @@ public:
     uint32_t GetLastCulledCount() const { return m_lastCulled; }
 
 private:
+    struct ForwardShadowCBData
+    {
+        int   numPointShadowCasters;
+        float pointShadowBias;
+        float _pad[2];
+    };
+
     struct TransformCBData
     {
         DirectX::XMFLOAT4X4 model;
@@ -89,9 +106,11 @@ private:
     Microsoft::WRL::ComPtr<ID3D11InputLayout>  m_layout;
     Microsoft::WRL::ComPtr<ID3D11Buffer>       m_lineBuffer;
 
-    ConstantBuffer<TransformCBData>      m_transformCB;
-    ConstantBuffer<MaterialParamsCBData> m_materialCB;
-    SamplerState                         m_sampler;
+    ConstantBuffer<TransformCBData>           m_transformCB;
+    ConstantBuffer<MaterialParamsCBData>      m_materialCB;
+    ConstantBuffer<ForwardShadowCBData>       m_shadowCB;
+    SamplerState                              m_sampler;
+    Microsoft::WRL::ComPtr<ID3D11SamplerState> m_cubeSampler;
     VertexBuffer                         m_sphereVB;
     IndexBuffer                          m_sphereIB;
     VertexBuffer                         m_wireSphereVB;

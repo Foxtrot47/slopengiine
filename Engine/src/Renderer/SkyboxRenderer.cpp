@@ -82,9 +82,40 @@ bool SkyboxRenderer::LoadPanorama(ID3D11Device* device, const wchar_t* path)
     }
 
     const DirectX::TexMetadata& meta = image.GetMetadata();
+
+    // Decompress BC6H → R16G16B16A16_FLOAT so we can generate mips for IBL sampling.
+    DirectX::ScratchImage decompressed;
+    if (DirectX::IsCompressed(meta.format))
+    {
+        hr = DirectX::Decompress(image.GetImages(), image.GetImageCount(), meta,
+                                 DXGI_FORMAT_R16G16B16A16_FLOAT, decompressed);
+        if (FAILED(hr))
+        {
+            SE_LOG_ERROR("SkyboxRenderer: Decompress failed: 0x%08X", hr);
+            return false;
+        }
+    }
+    else
+    {
+        decompressed = std::move(image);
+    }
+
+    // Generate full mip chain for IBL diffuse/specular sampling.
+    DirectX::ScratchImage mipped;
+    hr = DirectX::GenerateMipMaps(decompressed.GetImages(), decompressed.GetImageCount(),
+                                  decompressed.GetMetadata(),
+                                  DirectX::TEX_FILTER_LINEAR, 0, mipped);
+    if (FAILED(hr))
+    {
+        SE_LOG_ERROR("SkyboxRenderer: GenerateMipMaps failed: 0x%08X", hr);
+        // Fall back to no-mip version
+        mipped = std::move(decompressed);
+    }
+
+    const DirectX::TexMetadata& mippedMeta = mipped.GetMetadata();
     hr = DirectX::CreateShaderResourceViewEx(
         device,
-        image.GetImages(), image.GetImageCount(), meta,
+        mipped.GetImages(), mipped.GetImageCount(), mippedMeta,
         D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0,
         DirectX::CREATETEX_DEFAULT,
         m_panoramaSRV.ReleaseAndGetAddressOf());
@@ -94,7 +125,8 @@ bool SkyboxRenderer::LoadPanorama(ID3D11Device* device, const wchar_t* path)
         return false;
     }
 
-    SE_LOG_INFO("SkyboxRenderer: panorama loaded %zux%zu BC6H", meta.width, meta.height);
+    SE_LOG_INFO("SkyboxRenderer: panorama loaded %zux%zu (%zu mips)",
+                mippedMeta.width, mippedMeta.height, mippedMeta.mipLevels);
     return true;
 }
 

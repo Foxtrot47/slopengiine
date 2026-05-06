@@ -19,16 +19,14 @@ void LightEnvironment::BindPS(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 camera
     float ar = XMConvertToRadians(azimDeg);
 
     LightCBData lc;
-    lc.lightDir     = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
-    lc.shininess    = shininess;
-    lc.lightColor   = { lightColor[0] * lightIntensity,
-                        lightColor[1] * lightIntensity,
-                        lightColor[2] * lightIntensity };
-    lc._pad0        = 0.0f;
-    lc.ambientColor = { ambientColor[0], ambientColor[1], ambientColor[2] };
-    lc._pad1        = 0.0f;
-    lc.cameraPos    = cameraPos;
-    lc._pad2        = debugLightMode;
+    lc.lightDir      = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
+    lc.iblIntensity  = iblIntensity;
+    lc.lightColor    = { lightColor[0] * lightIntensity,
+                         lightColor[1] * lightIntensity,
+                         lightColor[2] * lightIntensity };
+    lc._pad0         = 0.0f;
+    lc.cameraPos     = cameraPos;
+    lc.debugLightMode = debugLightMode;
     XMStoreFloat4x4(&lc.lightViewProj, lightViewProj);
     m_lightCB.Update(ctx, lc);
     m_lightCB.BindPS(ctx, 1);

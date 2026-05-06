@@ -111,9 +111,19 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLib
 
     if (!m_transformCB.Create(device)) return false;
     if (!m_materialCB.Create(device))  return false;
+    if (!m_shadowCB.Create(device))    return false;
 
     if (!m_sampler.Create(device, { FilterMode::Anisotropic, AddressMode::Wrap }))
         return false;
+
+    // Linear-clamp sampler for point shadow cube map lookups (s2)
+    {
+        D3D11_SAMPLER_DESC sd = {};
+        sd.Filter   = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+        sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+        sd.MaxLOD   = D3D11_FLOAT32_MAX;
+        SE_HR(device->CreateSamplerState(&sd, m_cubeSampler.GetAddressOf()));
+    }
 
     {
         std::vector<MeshVertex> verts;
@@ -214,6 +224,30 @@ void ForwardPipeline::Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, Di
     ctx->IASetInputLayout(m_layout.Get());
     ctx->VSSetShader(m_vs.Get(), nullptr, 0);
     ctx->PSSetShader(m_ps.Get(), nullptr, 0);
+
+    // Default: no point shadow casters; caller overrides with BindPointShadows().
+    ForwardShadowCBData defaultShadow = { 0, 0.0f, { 0.0f, 0.0f } };
+    m_shadowCB.Update(ctx, defaultShadow);
+    m_shadowCB.BindPS(ctx, 4);
+}
+
+void ForwardPipeline::BindEnvironment(ID3D11DeviceContext* ctx,
+                                       ID3D11ShaderResourceView* panoramaSRV)
+{
+    ctx->PSSetShaderResources(4, 1, &panoramaSRV);
+}
+
+void ForwardPipeline::BindPointShadows(ID3D11DeviceContext* ctx,
+                                        ID3D11ShaderResourceView* psrv0,
+                                        ID3D11ShaderResourceView* psrv1,
+                                        int numCasters, float bias)
+{
+    ID3D11ShaderResourceView* srvs[2] = { psrv0, psrv1 };
+    ctx->PSSetShaderResources(5, 2, srvs);
+    ctx->PSSetSamplers(2, 1, m_cubeSampler.GetAddressOf());
+    ForwardShadowCBData data = { numCasters, bias, { 0.0f, 0.0f } };
+    m_shadowCB.Update(ctx, data);
+    m_shadowCB.BindPS(ctx, 4);
 }
 
 void ForwardPipeline::SubmitMesh(const Mesh& mesh, DirectX::XMMATRIX model,

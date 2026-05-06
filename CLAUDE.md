@@ -188,11 +188,9 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M44 | ~~Shadow map (directional; CSM-ready depth pass)~~ ✓ |
 | M45 | ~~PCF soft shadows~~ ✓ |
 | M46 | ~~Render-to-texture; fullscreen quad pass infrastructure~~ ✓ |
-| M47 | ~~Deferred shading (G-buffer: albedo, normal, depth, material)~~ ✓ |
 | M48 | ~~Point light shadow maps (cube depth map, 1–2 closest lights)~~ ✓ |
-| M49 | ~~SSAO~~ ✓ |
 | M50 | ~~HDR + tone mapping (Reinhard + ACES)~~ ✓ |
-| M50b | ~~Cook-Torrance PBR BRDF (GGX NDF, Smith geometry, Schlick Fresnel; replaces Blinn-Phong in deferred pass)~~ ✓ |
+| M50b | ~~Cook-Torrance PBR BRDF (GGX NDF, Smith geometry, Schlick Fresnel)~~ ✓ |
 | M51 | ~~Bloom (dual Kawase blur)~~ ✓ |
 | M52 | ~~IBL — diffuse irradiance + specular (split-sum); sRGB pipeline; HDR panorama support~~ ✓ |
 | M52b | ~~Auto-exposure / EV calibration~~ ✓ |
@@ -262,99 +260,41 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 
 ## Design Notes
 
-### Renderer architecture (post-refactor)
+### Renderer architecture
+- **Forward-only pipeline.** No deferred pass. All geometry rendered in a single HDR forward pass into `m_forwardHDR_RT` (`R16G16B16A16_FLOAT`).
 - `Renderer` = D3D11 device / swap chain / surface management only.
-- `ForwardPipeline` = shading strategy: owns VS/PS (`Shaders/Basic.hlsl`), input layout, TransformCB (b0), MaterialCB (b3), sampler, and all debug geometry buffers. Shadow pre-pass will feed *into* ForwardPipeline, not sit alongside it. `DeferredPipeline` is the future genuine sibling (M47).
-- `LightEnvironment` = directional + point light state only (`Init`, `BindPS`). No ImGui. Game code reads public fields directly for debug controls.
-- `CameraController` = single class with nested `OrbitState`/`FPSState`; `UpdateOrbit`/`UpdateFPS` are private methods. Tab switches modes.
+- `ForwardPipeline` = PBR shading: owns VS/PS (`Shaders/Basic.hlsl`), input layout, constant buffers, sampler, debug geometry buffers.
+- `LightEnvironment` = directional + point light state (`Init`, `BindPS`). Game code reads public fields for ImGui controls.
+- `CameraController` = single class with FreeFly/FPS modes; Tab switches.
 
-### Debug collider visualization
-- `ForwardPipeline::DrawWireSphere`, `DrawWireAABB`, `DrawWireDisc` all use `LINELIST` topology and restore `TRIANGLELIST` after each call.
-- Wire draws bypass lighting via `Unlit` flag in `MaterialCB` (b3): `float Unlit` replaces one pad float; PS early-exits with `float4(AlbedoTint, 1)` when `Unlit > 0.5`.
-- `DrawWireDisc` reuses ring 0 of `m_wireSphereIB` (the XZ circle, first 64 indices) — no extra GPU buffer.
-- Do NOT add an `AABB` overload to `DrawWireAABB` — Renderer must not include Physics headers. Pass `aabb.min, aabb.max` at call site.
-- Scene draws: green wire sphere = ball collider, yellow wire box = 60×60 floor OBB, cyan wire boxes = static OBBs.
-- Toggle via `m_showColliders` bool in TestScene; checkbox in the Physics panel.
-
-### Raycasting (M34)
-- `PhysicsWorld::Raycast(ray, hit)` iterates registered spheres, planes, and static OBBs; returns the closest hit.
-- `RaycastHit`: `t`, `point`, `normal`, `transform` (non-null = sphere), `kind` enum (Sphere/Plane/OBB).
-- `ForwardPipeline::DrawLine` uses a `D3D11_USAGE_DYNAMIC` 2-vertex buffer updated via `Map/Unmap` each call. Vertices are in world space; model CB is identity.
-- Test scene casts from the camera centre crosshair each frame. Hit shown as white wire sphere + yellow normal line when raycast toggle is on.
-
-### OBB narrowphase (M35)
-- `OBB` struct: center, halfExtents, axes[3] (world-space local axes, must stay orthonormal). `GetWorldMatrix()` builds rows from `axes[i] * halfExtents[i]` + translation — maps the unit cube (-1..1) to the OBB.
-- `Intersects(OBB, OBB)` in `Intersect.h`: SAT over 15 axes (3+3 face normals, 9 edge cross products).
-- `Intersects(Ray, OBB, t&)`: slab test in OBB local space. `Intersects(Ray, OBB, t&, normal&)` variant tracks which axis slab was the entry and returns the outward face normal. Sign rule: `f > 0` → ray enters from `-axes[i]` face → normal sign = −1.
-- `Intersects(OBB, Sphere)`: closest-point test; clamp sphere centre projection onto each axis.
-- `PhysicsWorld::ResolveSphereVsOBB`: closest-point penetration, normal impulse + friction, same pattern as ResolveSphereVsPlane.
-- `ForwardPipeline::DrawWireBox(ctx, XMMATRIX world, color)`: reuses `m_wireAABBVB/IB` (unit cube) with provided OBB world matrix. Call site passes `obb.GetWorldMatrix()`.
-
-### Render state cache (M40)
-- `RenderStateCache` in `Engine/Renderer/RenderStateCache.h/.cpp`. Owned as a value member of `Renderer`; exposed via `Renderer::GetStateCache()`.
-- Three `std::vector<std::pair<Desc, ComPtr<State>>>` — one each for rasterizer, depth-stencil, blend. Linear scan + `memcmp` for lookup (total state count is tiny, ~5).
-- Callers must zero-init (`= {}`) the desc struct before filling fields; `memcmp` over uninitialized padding bytes would produce false misses.
-- Returns raw non-owning `ID3D11XxxState*`; cache owns the lifetime via ComPtr.
-- `Renderer::Initialize` calls `m_stateCache.Init(device)`, stores `m_sceneDepthState` (raw ptr) for use in `BeginFrame`. `Renderer::Shutdown` calls `m_stateCache.Clear()` before releasing the device.
-- `SkyboxRenderer::Init` now takes `RenderStateCache&`; its two state objects (`LESS_EQUAL`+no-write DS, `CULL_NONE` RS) come from the cache instead of direct `CreateXxx` calls. Members are raw ptrs instead of ComPtrs.
-
-### Mip mapping (M37)
-- `Texture2D::CreateSRV` creates with `MipLevels=0` (full chain), `D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE`, `D3D11_RESOURCE_MISC_GENERATE_MIPS`, `D3D11_USAGE_DEFAULT`.
-- Uploads mip 0 via `ctx->UpdateSubresource`, then calls `ctx->GenerateMips(srv)`.
-- `SrvDesc.Texture2D.MipLevels = (UINT)-1` exposes all generated levels to the shader.
-- `AssetManager::Init` now takes `(device, context)` — context stored as `m_context`, threaded through all texture load paths.
-- Sampler was already `Anisotropic` with `MaxLOD = FLT_MAX` — no sampler changes needed.
-- 1×1 default textures (white, normal) go through the same path; `GenerateMips` on a 1×1 is a no-op.
-
-### Character controller (M36)
-- `CharacterController` struct: `position` = feet (bottom of capsule). `radius`, `height`, `eyeHeight`, `stepHeight`, `slopeLimit`, `jumpSpeed`, `gravAccel`, `moveSpeed`, `gravityEnabled`.
-- `GetEyePosition()` = `{pos.x, pos.y + eyeHeight, pos.z}`. `Jump()` sets `velY = jumpSpeed` if grounded.
-- `PhysicsWorld::StepCharacter` runs two passes: (1) gravity + vertical move → resolve floors/ceilings via planes then OBBs (sets `isGrounded`); (2) horizontal move → resolve walls + step-up for OBBs.
-- Collision uses a single sphere at `bottomCenter = {pos.x, pos.y + radius, pos.z}` — not a true two-sphere capsule.
-- Step-up: OBB `maxY` = `center.y + Σ|axes[i].y|*halfExtents[i]`. If `maxY > feet && maxY <= feet + stepHeight` → snap feet up to maxY instead of horizontal push.
-- Slope limit: `cosSlope = cos(slopeLimit°)`. `n.y > cosSlope` → floor (grounding); else → wall.
-- `CameraController::UpdateFPS` is mouse-look only (RMB capture, yaw/pitch). WASD + jump + `StepCharacter` live in main.cpp. Camera eye = `cc.GetEyePosition()`, target = `eye + look(yaw, pitch)`.
-- Global gravity toggle in TestScene: `m_gravityEnabled` syncs `m_ballRigidBody->useGravity` and `m_cc.gravityEnabled` together.
-- Static OBBs drawn in cyan when `m_showColliders` is on.
-
-### SSAO (M49)
-- `SSAO` class in `Engine/Renderer/SSAO.h/.cpp`. Owned as value member in TestScene; renders between geometry pass and lighting pass.
-- 64-sample hemisphere kernel (biased toward origin with quadratic falloff), 4×4 tiled noise texture.
-- 3-pass pipeline: (1) SSAO generation → m_aoRT, (2) horizontal bilateral blur → m_blurRT, (3) vertical bilateral blur → m_aoRT. Result in `GetAOSRV()`.
-- All computation in view space: `ReconstructViewPos` via InvProjection, `LinearizeDepth` via `Projection._43 / (hwDepth - Projection._33)`.
-- World normals from G-buffer transformed to view space: `mul(normalWS, (float3x3)View)`.
-- Bilateral blur: 5-tap separable, depth + normal weighted edge preservation.
-- Render targets: R8_UNORM (single channel AO). Resized alongside GBuffer in deferred resize handler.
-- `DeferredLighting.hlsl` samples AO at t5, multiplies ambient term only: `ao * AmbientColor * albedo`. `EnableSSAO` flag avoids null SRV sampling.
-- `SSAOParamsCB` (1248 bytes): Projection + InvProjection + View + samples[64] + screen/noise params.
-- ImGui controls: enable toggle, radius, bias, intensity, kernel size.
-- Logger now uses `_fsopen` with `_SH_DENYNO` for shared read access (allows log reading while app runs).
+### PBR / IBL (Basic.hlsl)
+- **Cook-Torrance BRDF**: GGX NDF, Smith-Schlick geometry, Schlick Fresnel. Purely metallic-roughness workflow.
+- **IBL Diffuse**: samples the equirectangular panorama at maximum mip level (pre-blurred average) in the normal direction, divided by PI for Lambertian energy conservation.
+- **IBL Specular**: samples the panorama at `roughness * (mipCount - 1)` in the reflection direction.
+- **IBL Intensity**: single float multiplier (default 1.0) scales both diffuse and specular IBL terms. No legacy ambient color.
+- Panorama loaded via DirectXTex; BC6H is decompressed to R16G16B16A16_FLOAT and full mip chain is generated at load time for correct IBL LOD sampling.
+- `LightCB` (b1): `LightDir(3) + IBLIntensity(1) | LightColor(3) + pad | CameraPos(3) + DebugLightMode | LightViewProj(4x4)`.
 
 ### HDR + Tone Mapping (M50)
-- `ToneMap` class in `Engine/Renderer/ToneMap.h/.cpp`. Owned as value member in TestScene; runs in `OnPostProcess` after deferred scene RT is complete.
-- `m_deferredSceneRT` is `DXGI_FORMAT_R16G16B16A16_FLOAT` — HDR format so skybox (BC6H) can write values > 1.
-- `Apply(ctx, hdrSRV, w, h)`: caller must call `GetRenderer().BindBackBuffer(ctx)` first; reads HDR at t0, outputs to back buffer.
-- Operators: Reinhard (0) and ACES Narkowicz (1) — ACES is the default.
-- `gammaCorrect` defaults **false** — Bistro albedos are already sRGB-encoded; applying gamma encode on top double-encodes them (washout). Proper fix is texture sRGB linearisation at load time (M52). Keep off until then.
-- SSAO tuning for outdoor Bistro: `radius=1.0`, `intensity=1.0`, `minAO=0.2` floor prevents full occlusion blackout.
+- `ToneMap` class. Runs in `OnPostProcess`; reads HDR RT, outputs to back buffer.
+- Operators: Reinhard (0) and ACES Narkowicz (1) — ACES is default.
 
 ### Point Light Shadows (M48)
-- `PointShadowMap` class in `Engine/Renderer/PointShadowMap.h/.cpp`. Array of 2 in TestScene (`m_pointShadowMaps[2]`).
-- Stores **linear depth** (`dist / lightFar`) in `R32_FLOAT` `TextureCube` — avoids non-linear hardware depth issues with cube map sampling.
-- 6 separate RTVs (one per face) + shared D32_FLOAT DSV. Face matrices use D3D11 LH cube convention: +Y face up=(0,0,-1), -Y face up=(0,0,+1).
-- Shadow depth shader: `PointShadowDepth.hlsl` — VS passes worldPos through, PS writes `length(worldPos - LightPos) / LightFar`.
-- **SRV/RTV hazard prevention**: `BeginFace` explicitly unbinds t6/t7 before binding as RTV; `LightingPass` unbinds t4–t7 on exit.
-- `DeferredLighting.hlsl`: `TextureCube<float> g_pointShadow0/1` at t6/t7, `g_cubeSampler` (linear-clamp) at s2.
-- `DeferredCB` (b0) gains `NumPointShadowCasters` (int) + `PointShadowBias` (float). Convention: first N point lights in `PointLightCB` are shadow casters (indices 0..N-1).
-- Resolution: 256×256 per face (6 faces × 2 lights = 12 depth passes per frame). Toggle via ImGui "Shadow Casters" slider (0–2).
+- `PointShadowMap` class. 2 slots, 256×256 per cube face. Stores linear depth in R32_FLOAT TextureCube.
+- 6 RTVs per light + shared DSV. SRV/RTV hazard prevention via explicit unbind before binding as RTV.
 
 ### Bloom (M51)
-- `Bloom` class in `Engine/Renderer/Bloom.h/.cpp`. Owned as value member in TestScene; runs in `OnPostProcess` between scene completion and tone mapping.
-- `Apply(ctx, hdrRT)`: reads from `hdrRT.GetSRV()`, writes bloom additively back into `hdrRT` via additive blend state.
-- 5-level dual Kawase chain: `m_downChain[5]` (W/2 → W/32) + `m_upChain[4]` (W/16 → W/2). All RTs are `R16G16B16A16_FLOAT`.
-- **Threshold pass** (half-res): soft-knee extraction — `rq = (clamp(lum-thresh+knee, 0, 2*knee))² / 4*knee`; weights color by `max(rq, lum-thresh) / lum`.
-- **Downsample** (5-tap bilinear dual-filter): `centre×4 + 4 diagonal bilinear taps`, divide by 8. Uses source texel size as UV offset.
-- **Upsample** (9-tap tent): `lerp(downChain[k], KawaseUp(upChain[k+1]), scatter)`. Each level blends the coarser bloom with same-level fine detail.
-- **Composite**: KawaseUp upsample of `upChain[0]` (half-res → full-res) × `intensity`, rendered with `ONE+ONE` additive blend into HDR RT.
-- Uses `DrawGeometryOnly` + manual VS/PS/sampler bind (linear clamp) instead of `FullscreenQuad::Draw` to avoid the point sampler override.
-- Bloom only active in the deferred path (needs `m_deferredSceneRT`). ImGui controls: enable, threshold (0–4), intensity (0–0.5), scatter (0–1).
+- 5-level dual Kawase chain (half-res threshold → W/32 downsample → upsample composite).
+- Soft-knee threshold, additive blend into HDR RT before tone mapping.
+
+### Debug collider visualization
+- `ForwardPipeline::DrawWireSphere`, `DrawWireAABB`, `DrawWireBox`, `DrawLine` — `LINELIST` topology.
+- `Unlit` flag in `MaterialCB` (b3) bypasses PBR; PS outputs flat `AlbedoTint`.
+
+### Character controller (M36)
+- Single sphere at `{pos.x, pos.y + radius, pos.z}`. Two-pass step: vertical (gravity/ground), horizontal (walls/step-up).
+- `PhysicsWorld::StepCharacter` resolves vs planes and static OBBs. Slope limit via `n.y > cos(slopeLimit)`.
+
+### OBB narrowphase (M35)
+- SAT over 15 axes (3+3 face normals, 9 edge cross products).
+- `OBB::GetWorldMatrix()` maps unit cube to oriented box. Used for both physics and wire rendering.
