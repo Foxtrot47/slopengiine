@@ -12,9 +12,10 @@ bool Mesh::Load(ID3D11Device* device, const char* path)
     Assimp::Importer importer;
 
     const aiScene* scene = importer.ReadFile(path,
-        aiProcess_Triangulate        |
-        aiProcess_GenSmoothNormals   |
-        aiProcess_FlipUVs            |
+        aiProcess_Triangulate          |
+        aiProcess_GenSmoothNormals     |
+        aiProcess_ConvertToLeftHanded  |
+        aiProcess_FlipUVs              |
         aiProcess_JoinIdenticalVertices |
         aiProcess_CalcTangentSpace);
 

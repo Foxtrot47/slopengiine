@@ -64,9 +64,11 @@ public:
         m_camCtrl.freeFly.pitchDeg = 0.0f;
         m_camCtrl.Update(0.0f, GetInput(), *m_camera, GetWindow().GetHandle());
 
-        // Scene scale + orientation for Bistro (Unreal Z-up → Y-up)
-        m_sceneScale    = 0.5f;
-        m_sceneRotXDeg  = -90.0f;
+        // Bistro scene entity with per-entity transform
+        SE::Entity* bistroEnt       = m_scene.CreateEntity("Bistro");
+        m_bistroTransform           = bistroEnt->AddComponent<SE::TransformComponent>();
+        m_bistroTransform->scale    = 0.5f;
+        m_bistroTransform->eulerDeg = { 90.0f, 0.0f, 0.0f }; // rotation in degrees: pitch=90
 
         SE::Entity* ballEnt        = m_scene.CreateEntity("PhysBall");
         m_ballTransform            = ballEnt->AddComponent<SE::TransformComponent>();
@@ -185,8 +187,8 @@ protected:
 
         DrawUI(view, proj);
 
-        m_meshWorld = XMMatrixRotationX(XMConvertToRadians(m_sceneRotXDeg))
-                    * XMMatrixScaling(m_sceneScale, m_sceneScale, m_sceneScale);
+        // Use bistro entity's transform for mesh world matrix
+        m_meshWorld = m_bistroTransform->GetLocalMatrix();
 
         // Shadow pass
         {
@@ -194,9 +196,10 @@ protected:
             float ar = XMConvertToRadians(m_lights.azimDeg);
             XMFLOAT3 lightDir = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
             SE::AABB raw = m_mesh ? m_mesh->GetBounds() : SE::AABB{};
+            float s = m_bistroTransform->scale;
             SE::AABB bounds = {
-                { raw.min.x * m_sceneScale, raw.min.y * m_sceneScale, raw.min.z * m_sceneScale },
-                { raw.max.x * m_sceneScale, raw.max.y * m_sceneScale, raw.max.z * m_sceneScale }
+                { raw.min.x * s, raw.min.y * s, raw.min.z * s },
+                { raw.max.x * s, raw.max.y * s, raw.max.z * s }
             };
             m_shadowMap.UpdateLightMatrix(lightDir, bounds);
             m_shadowMap.BeginShadowPass(ctx);
@@ -372,8 +375,6 @@ private:
         ImGui::SliderFloat("Far Z", &m_camera->farZ, 100.0f, 20000.0f, "%.0f");
         ImGui::Text("Eye (%.1f, %.1f, %.1f)",
             m_camera->eye.x, m_camera->eye.y, m_camera->eye.z);
-        ImGui::SliderFloat("Scene Scale",  &m_sceneScale,    0.001f, 2.0f,   "%.4f");
-        ImGui::SliderFloat("Rotate X",     &m_sceneRotXDeg, -180.0f, 180.0f, "%.1f deg");
         ImGui::End();
 
         // --- Material ---
@@ -576,6 +577,7 @@ private:
     SE::Scene            m_scene;
     SE::CameraComponent* m_camera  = nullptr;
     SE::CameraController m_camCtrl;
+    SE::TransformComponent* m_bistroTransform = nullptr;
 
     float m_matTint[3]     = { 1.0f, 1.0f, 1.0f };
     float m_roughnessScale = 1.0f;
@@ -594,8 +596,6 @@ private:
     bool                         m_showColliders     = false;
     bool                         m_castRay           = false;
     bool                         m_debugShadow       = false;
-    float                        m_sceneScale        = 1.0f;
-    float                        m_sceneRotXDeg      = 0.0f;
     DirectX::XMMATRIX            m_meshWorld         = DirectX::XMMatrixIdentity();
     SE::RenderTarget             m_forwardHDR_RT;
     SE::ToneMap                  m_toneMap;
