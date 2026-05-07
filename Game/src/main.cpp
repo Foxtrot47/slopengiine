@@ -42,7 +42,7 @@ public:
         if (!m_pipeline.Init(device, GetAssets(), GetShaders())) return false;
         if (!m_shadowMap.Init(device, GetShaders(), 2048)) return false;
 
-        // Forward HDR render target
+        // Forward HDR render target (owns its own depth buffer)
         if (!m_forwardHDR_RT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight(),
                 DXGI_FORMAT_R16G16B16A16_FLOAT, /*withDepth=*/true))
             return false;
@@ -179,6 +179,20 @@ public:
         m_bloom.threshold      = desc.bloom.threshold;
         m_bloom.intensity      = desc.bloom.intensity;
         m_bloom.scatter        = desc.bloom.scatter;
+
+        // --- JSON scene objects (spheres / planes with explicit PBR textures) ---
+        m_sceneObjects.clear();
+        for (auto& obj : desc.objects)
+        {
+            auto toW = [](const std::string& s) { return std::wstring(s.begin(), s.end()); };
+            LoadedObject lo;
+            lo.def           = obj;
+            lo.mat.albedo    = obj.albedoPath.empty()    ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.albedoPath));
+            lo.mat.normal    = obj.normalPath.empty()    ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.normalPath));
+            lo.mat.roughness = obj.roughnessPath.empty() ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.roughnessPath));
+            lo.mat.metallic  = obj.metallicPath.empty()  ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.metallicPath));
+            m_sceneObjects.push_back(std::move(lo));
+        }
 
         // Update window title
         std::wstring title = L"FoxEngine " + std::wstring(desc.name.begin(), desc.name.end());
@@ -350,6 +364,20 @@ protected:
             m_pipeline.Flush(ctx);
         }
         m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
+
+        // JSON-driven scene objects — texture maps drive all PBR values (scalars = 1.0)
+        for (auto& lo : m_sceneObjects)
+        {
+            using Type = SE::SceneDescriptor::SceneObject::Type;
+            XMFLOAT3 pos  = { lo.def.position[0], lo.def.position[1], lo.def.position[2] };
+            XMFLOAT3 tint = { lo.def.tint[0],     lo.def.tint[1],     lo.def.tint[2] };
+            if (lo.def.type == Type::Sphere)
+                m_pipeline.DrawPBRSphere(ctx, pos, lo.def.radius, lo.mat, 1.0f, 1.0f, tint);
+            else
+                m_pipeline.DrawPBRPlane(ctx, pos, lo.def.halfSizeX, lo.def.halfSizeZ,
+                                        lo.mat, 1.0f, 1.0f, tint);
+        }
+
         m_shadowMap.Unbind(ctx);
 
         // Unbind point shadow SRVs
@@ -696,6 +724,13 @@ private:
     SE::ShadowMap                            m_shadowMap;
     SE::AssetHandle<SE::Mesh>                m_mesh;
     std::vector<SE::ForwardPipeline::SubMat> m_subMats;
+
+    struct LoadedObject
+    {
+        SE::SceneDescriptor::SceneObject def;
+        SE::ForwardPipeline::SubMat      mat;
+    };
+    std::vector<LoadedObject> m_sceneObjects;
 
     SE::Scene            m_scene;
     SE::CameraComponent* m_camera  = nullptr;

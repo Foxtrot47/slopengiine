@@ -57,6 +57,9 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
     // Skybox
     if (root.contains("skybox")) out.skybox = root["skybox"].get<std::string>();
 
+    // Reflection panorama (SSR fallback)
+    if (root.contains("reflectionPanorama")) out.reflectionPanorama = root["reflectionPanorama"].get<std::string>();
+
     // Camera
     if (root.contains("camera"))
     {
@@ -136,6 +139,35 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
         if (b.contains("scatter"))   out.bloom.scatter   = b["scatter"].get<float>();
     }
 
+    // Scene objects (PBR showcase or any extra geometry)
+    if (root.contains("objects") && root["objects"].is_array())
+    {
+        for (auto& obj : root["objects"])
+        {
+            SceneDescriptor::SceneObject o;
+
+            std::string type = "sphere";
+            if (obj.contains("type")) type = obj["type"].get<std::string>();
+            o.type = (type == "plane") ? SceneDescriptor::SceneObject::Type::Plane
+                                       : SceneDescriptor::SceneObject::Type::Sphere;
+
+            o.position = ReadFloat3(obj, "position", o.position);
+            if (obj.contains("radius"))    o.radius    = obj["radius"].get<float>();
+            if (obj.contains("halfSizeX")) o.halfSizeX = obj["halfSizeX"].get<float>();
+            if (obj.contains("halfSizeZ")) o.halfSizeZ = obj["halfSizeZ"].get<float>();
+
+            if (obj.contains("material"))
+            {
+                auto& m = obj["material"];
+                if (m.contains("albedo"))       o.albedoPath    = m["albedo"].get<std::string>();
+                if (m.contains("normal"))       o.normalPath    = m["normal"].get<std::string>();
+                if (m.contains("roughness"))    o.roughnessPath = m["roughness"].get<std::string>();
+                if (m.contains("metallic_map")) o.metallicPath  = m["metallic_map"].get<std::string>();
+                o.tint = ReadFloat3(m, "tint", o.tint);
+            }
+            out.objects.push_back(o);
+        }
+    }
     SE_LOG_INFO("SceneLoader: Loaded '%s' (%s)", out.name.c_str(), path.c_str());
     return true;
 }

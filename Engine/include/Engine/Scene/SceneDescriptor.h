@@ -21,6 +21,9 @@ struct SceneDescriptor
     // Skybox
     std::string skybox;
 
+    // Optional equirectangular HDR panorama for SSR fallback reflections
+    std::string reflectionPanorama;
+
     // Camera
     struct CameraDesc {
         std::array<float, 3> eye   = { 0.0f, 5.0f, -10.0f };
@@ -83,6 +86,27 @@ struct SceneDescriptor
         float scatter   = 0.7f;
     };
     BloomDesc bloom;
+
+    // Optional array of scene objects with explicit geometry and PBR material paths.
+    // Rendered in addition to the main mesh. Enables a fully JSON-driven PBR showcase.
+    struct SceneObject
+    {
+        enum class Type { Sphere, Plane } type = Type::Sphere;
+
+        std::array<float, 3> position = { 0.f, 0.f, 0.f };
+        float radius    = 1.0f;   // sphere radius
+        float halfSizeX = 10.0f;  // plane half-extents (plane only)
+        float halfSizeZ = 10.0f;
+
+        // PBR material texture paths (DDS, relative to working dir)
+        std::string albedoPath;
+        std::string normalPath;
+        std::string roughnessPath;
+        std::string metallicPath;
+
+        std::array<float, 3> tint = { 1.f, 1.f, 1.f };
+    };
+    std::vector<SceneObject> objects;
 };
 
 } // namespace SE

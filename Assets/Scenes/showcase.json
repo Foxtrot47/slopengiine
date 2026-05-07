@@ -1,0 +1,102 @@
+{
+  "name": "PBR Showcase",
+  "skybox": "Assets/Bistro/san_giuseppe_bridge_4k.dds",
+  "camera": {
+    "eye": [0, 3, -14],
+    "yaw": 0,
+    "pitch": -10,
+    "nearZ": 0.1,
+    "farZ": 500
+  },
+  "sun": {
+    "elevation": 45.0,
+    "azimuth": -30.0,
+    "intensity": 2.5,
+    "color": [1.0, 0.95, 0.88]
+  },
+  "iblIntensity": 1.2,
+  "pointLights": [],
+  "physics": {
+    "floor": {
+      "min": [-30, -0.5, -30],
+      "max": [30, 0, 30],
+      "friction": 0.6,
+      "restitution": 0.3
+    },
+    "ballSpawn": [0, 10, 0],
+    "ballRadius": 0.5,
+    "characterSpawn": [0, 2, -14],
+    "gravity": true
+  },
+  "toneMapping": {
+    "op": 1,
+    "exposure": 1.0,
+    "gammaCorrect": false
+  },
+  "bloom": {
+    "enabled": true,
+    "threshold": 1.2,
+    "intensity": 0.08,
+    "scatter": 0.65
+  },
+  "objects": [
+    {
+      "comment": "--- Reflective marble floor ---",
+      "type": "plane",
+      "position": [0, 0, 0],
+      "halfSizeX": 18.0,
+      "halfSizeZ": 18.0,
+      "material": {
+        "albedo":       "Assets/Showcase/copper_albedo.dds",
+        "normal":       "Assets/Showcase/copper_normal.dds",
+        "roughness":    "Assets/Showcase/copper_roughness.dds",
+        "metallic_map": "Assets/Showcase/copper_metallic.dds"
+      }
+    },
+    {
+      "comment": "--- Polished aluminium ---",
+      "type": "sphere",
+      "position": [-7.5, 1.5, 0],
+      "radius": 1.4,
+      "material": {
+        "albedo":       "Assets/Showcase/aluminium_albedo.dds",
+        "normal":       "Assets/Showcase/aluminium_normal.dds",
+        "roughness":    "Assets/Showcase/aluminium_roughness.dds",
+        "metallic_map": "Assets/Showcase/aluminium_metallic.dds"
+      }
+    },
+    {
+      "comment": "--- Copper ---",
+      "type": "sphere",
+      "position": [-2.5, 1.5, 0],
+      "radius": 1.4,
+      "material": {
+        "albedo":       "Assets/Showcase/copper_albedo.dds",
+        "normal":       "Assets/Showcase/copper_normal.dds",
+        "roughness":    "Assets/Showcase/copper_roughness.dds",
+        "metallic_map": "Assets/Showcase/copper_metallic.dds"
+      }
+    },
+    {
+      "comment": "--- Marble sphere ---",
+      "type": "sphere",
+      "position": [2.5, 1.5, 0],
+      "radius": 1.4,
+      "material": {
+        "albedo":    "Assets/Showcase/marble_albedo.dds",
+        "normal":    "Assets/Showcase/marble_normal.dds",
+        "roughness": "Assets/Showcase/marble_roughness.dds"
+      }
+    },
+    {
+      "type": "sphere",
+      "position": [7.5, 1.5, 0],
+      "radius": 1.4,
+      "material": {
+        "albedo":    "Assets/Showcase/leather_albedo.dds",
+        "normal":    "Assets/Showcase/leather_normal.dds",
+        "roughness": "Assets/Showcase/leather_arm.dds"
+      }
+    }
+  ]
+}
