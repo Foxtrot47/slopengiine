@@ -127,6 +127,7 @@ void ShadowMap::UpdateLightMatrix(DirectX::XMFLOAT3 lightDir, const AABB& sceneB
     XMFLOAT3 ext    = sceneBounds.Extents();
     // Pull eye far enough along light direction so the whole scene is in front of it.
     float maxExt    = ext.x; if (ext.y > maxExt) maxExt = ext.y; if (ext.z > maxExt) maxExt = ext.z;
+    if (maxExt < 1.0f) maxExt = 50.0f; // degenerate/no-mesh scene: use a sensible default
 
     XMVECTOR center = XMLoadFloat3(&centre);
     XMVECTOR eye    = XMVectorAdd(center, XMVectorScale(dir, maxExt * 2.0f));
