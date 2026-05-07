@@ -25,6 +25,29 @@ void BuildWireAABB(std::vector<MeshVertex>& verts, std::vector<uint32_t>& indice
     for (auto i : edges) indices.push_back(i);
 }
 
+// Horizontal plane in XZ, Y=0, normal=(0,1,0). One quad tiled by uvScale.
+void BuildPlaneMesh(float uvScale, std::vector<MeshVertex>& verts, std::vector<uint32_t>& indices)
+{
+    // 4 corners of a unit quad in XZ plane
+    // Tangent = +X, Bitangent = +Z (standard horizontal plane TBN)
+    MeshVertex v[4] = {};
+    float uvs[4][2] = { {0,0}, {uvScale,0}, {uvScale,uvScale}, {0,uvScale} };
+    float xs[4] = { -1,  1,  1, -1 };
+    float zs[4] = { -1, -1,  1,  1 };
+    for (int i = 0; i < 4; ++i)
+    {
+        v[i].x = xs[i]; v[i].y = 0.0f; v[i].z = zs[i];
+        v[i].nx = 0.0f; v[i].ny = 1.0f; v[i].nz = 0.0f;
+        v[i].u  = uvs[i][0]; v[i].v = uvs[i][1];
+        v[i].tx = 1.0f; v[i].ty = 0.0f; v[i].tz = 0.0f;  // tangent = +X
+        v[i].bx = 0.0f; v[i].by = 0.0f; v[i].bz = 1.0f;  // bitangent = +Z
+        verts.push_back(v[i]);
+    }
+    // Two triangles (CCW from above)
+    indices.push_back(0); indices.push_back(2); indices.push_back(1);
+    indices.push_back(0); indices.push_back(3); indices.push_back(2);
+}
+
 void BuildWireSphere(int segs, std::vector<MeshVertex>& verts, std::vector<uint32_t>& indices)
 {
     // Three great circles (XZ, XY, YZ planes); radius=1, scaled in draw call.
@@ -149,6 +172,14 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLib
             static_cast<uint32_t>(verts.size() * sizeof(MeshVertex)), sizeof(MeshVertex));
         m_wireAABBIB.Create(device, idx.data(), static_cast<uint32_t>(idx.size()));
     }
+    {
+        std::vector<MeshVertex> verts;
+        std::vector<uint32_t>   idx;
+        BuildPlaneMesh(4.0f, verts, idx);  // UV tiled 4x over the unit quad
+        m_planeVB.Create(device, verts.data(),
+            static_cast<uint32_t>(verts.size() * sizeof(MeshVertex)), sizeof(MeshVertex));
+        m_planeIB.Create(device, idx.data(), static_cast<uint32_t>(idx.size()));
+    }
 
     {
         D3D11_BUFFER_DESC bd  = {};
@@ -160,6 +191,7 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLib
     }
 
     m_defaultWhite  = assets.GetDefaultWhite();
+    m_defaultBlack  = assets.GetDefaultBlack();
     m_defaultNormal = assets.GetDefaultNormal();
     return true;
 }
@@ -205,6 +237,8 @@ std::vector<ForwardPipeline::SubMat> ForwardPipeline::LoadMeshMaterials(AssetMan
 
         mat.roughness = loadTex(info.roughnessPath);
         if (!mat.roughness) mat.roughness = assets.GetDefaultWhite();
+
+        mat.metallic  = assets.GetDefaultBlack();
     }
 
     return mats;
@@ -224,6 +258,9 @@ void ForwardPipeline::Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, Di
     ctx->IASetInputLayout(m_layout.Get());
     ctx->VSSetShader(m_vs.Get(), nullptr, 0);
     ctx->PSSetShader(m_ps.Get(), nullptr, 0);
+
+    // Bind default black to t7 (metallic = 0 → dielectric). Draw calls with a metallic map override it.
+    m_defaultBlack->BindPS(ctx, 7);
 
     // Default: no point shadow casters; caller overrides with BindPointShadows().
     ForwardShadowCBData defaultShadow = { 0, 0.0f, { 0.0f, 0.0f } };
@@ -324,6 +361,7 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
         mat.albedo->BindPS(ctx, 0);
         mat.roughness->BindPS(ctx, 1);
         mat.normal->BindPS(ctx, 2);
+        (mat.metallic ? mat.metallic : m_defaultBlack)->BindPS(ctx, 7);
         draw.mesh->DrawSubMesh(ctx, item.subMeshIndex);
         ++m_lastDrawCalls;
     }
@@ -361,6 +399,7 @@ void ForwardPipeline::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
         mats[i].albedo->BindPS(ctx, 0);
         mats[i].roughness->BindPS(ctx, 1);
         mats[i].normal->BindPS(ctx, 2);
+        (mats[i].metallic ? mats[i].metallic : m_defaultBlack)->BindPS(ctx, 7);
         mesh.DrawSubMesh(ctx, i);
     }
 }
@@ -555,6 +594,62 @@ void ForwardPipeline::DrawWireDisc(ID3D11DeviceContext* ctx,
     m_wireSphereIB.Bind(ctx);
     ctx->DrawIndexed(64, 0, 0);
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
+
+void ForwardPipeline::DrawPBRSphere(ID3D11DeviceContext* ctx,
+                                     DirectX::XMFLOAT3 position, float radius,
+                                     const SubMat& mat, float metallic, float roughnessScale,
+                                     DirectX::XMFLOAT3 tint)
+{
+    using namespace DirectX;
+
+    SetMaterialParams(ctx, tint, roughnessScale, metallic);
+
+    mat.albedo    ? mat.albedo->BindPS(ctx, 0)    : m_defaultWhite->BindPS(ctx, 0);
+    mat.roughness ? mat.roughness->BindPS(ctx, 1) : m_defaultWhite->BindPS(ctx, 1);
+    mat.normal    ? mat.normal->BindPS(ctx, 2)    : m_defaultNormal->BindPS(ctx, 2);
+    mat.metallic  ? mat.metallic->BindPS(ctx, 7)  : m_defaultBlack->BindPS(ctx, 7);
+
+    TransformCBData cb;
+    XMStoreFloat4x4(&cb.model,
+        XMMatrixScaling(radius, radius, radius) *
+        XMMatrixTranslation(position.x, position.y, position.z));
+    XMStoreFloat4x4(&cb.view,       m_view);
+    XMStoreFloat4x4(&cb.projection, m_proj);
+    m_transformCB.Update(ctx, cb);
+    m_transformCB.BindVS(ctx, 0);
+
+    m_sphereVB.Bind(ctx);
+    m_sphereIB.Bind(ctx);
+    ctx->DrawIndexed(m_sphereIB.GetCount(), 0, 0);
+}
+
+void ForwardPipeline::DrawPBRPlane(ID3D11DeviceContext* ctx,
+                                    DirectX::XMFLOAT3 center, float halfSizeX, float halfSizeZ,
+                                    const SubMat& mat, float metallic, float roughnessScale,
+                                    DirectX::XMFLOAT3 tint)
+{
+    using namespace DirectX;
+
+    SetMaterialParams(ctx, tint, roughnessScale, metallic);
+
+    mat.albedo    ? mat.albedo->BindPS(ctx, 0)    : m_defaultWhite->BindPS(ctx, 0);
+    mat.roughness ? mat.roughness->BindPS(ctx, 1) : m_defaultWhite->BindPS(ctx, 1);
+    mat.normal    ? mat.normal->BindPS(ctx, 2)    : m_defaultNormal->BindPS(ctx, 2);
+    mat.metallic  ? mat.metallic->BindPS(ctx, 7)  : m_defaultBlack->BindPS(ctx, 7);
+
+    TransformCBData cb;
+    XMStoreFloat4x4(&cb.model,
+        XMMatrixScaling(halfSizeX, 1.0f, halfSizeZ) *
+        XMMatrixTranslation(center.x, center.y, center.z));
+    XMStoreFloat4x4(&cb.view,       m_view);
+    XMStoreFloat4x4(&cb.projection, m_proj);
+    m_transformCB.Update(ctx, cb);
+    m_transformCB.BindVS(ctx, 0);
+
+    m_planeVB.Bind(ctx);
+    m_planeIB.Bind(ctx);
+    ctx->DrawIndexed(m_planeIB.GetCount(), 0, 0);
 }
 
 } // namespace SE

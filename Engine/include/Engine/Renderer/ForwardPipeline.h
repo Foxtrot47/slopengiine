@@ -22,6 +22,7 @@ public:
         AssetHandle<Texture2D> albedo;
         AssetHandle<Texture2D> normal;
         AssetHandle<Texture2D> roughness;
+        AssetHandle<Texture2D> metallic;  // t7; nullptr → default black (0 = dielectric)
     };
 
     bool Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders);
@@ -71,6 +72,19 @@ public:
     void DrawLine(ID3D11DeviceContext* ctx,
                   DirectX::XMFLOAT3 from, DirectX::XMFLOAT3 to, DirectX::XMFLOAT3 color);
 
+    // Draw a sphere with explicit PBR textures and a metallic override scalar.
+    // Uses the SubMat's albedo/normal/roughness textures. Set metallic per-sphere via SetMaterialParams.
+    void DrawPBRSphere(ID3D11DeviceContext* ctx,
+                       DirectX::XMFLOAT3 position, float radius,
+                       const SubMat& mat, float metallic, float roughnessScale = 1.0f,
+                       DirectX::XMFLOAT3 tint = { 1.f, 1.f, 1.f });
+
+    // Draw a horizontal unit plane scaled to the given half-extents, with PBR textures.
+    void DrawPBRPlane(ID3D11DeviceContext* ctx,
+                      DirectX::XMFLOAT3 center, float halfSizeX, float halfSizeZ,
+                      const SubMat& mat, float metallic, float roughnessScale = 1.0f,
+                      DirectX::XMFLOAT3 tint = { 1.f, 1.f, 1.f });
+
     uint32_t GetLastDrawCalls() const { return m_lastDrawCalls; }
     uint32_t GetLastCulledCount() const { return m_lastCulled; }
 
@@ -117,8 +131,11 @@ private:
     IndexBuffer                          m_wireSphereIB;
     VertexBuffer                         m_wireAABBVB;
     IndexBuffer                          m_wireAABBIB;
+    VertexBuffer                         m_planeVB;
+    IndexBuffer                          m_planeIB;
 
     AssetHandle<Texture2D> m_defaultWhite;
+    AssetHandle<Texture2D> m_defaultBlack;
     AssetHandle<Texture2D> m_defaultNormal;
 
     DirectX::XMMATRIX m_view = {};

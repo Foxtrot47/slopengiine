@@ -1,6 +1,6 @@
 // Basic.hlsl — forward PBR + equirectangular IBL + directional/point shadows.
 // Registers: b0=TransformCB, b1=LightCB, b2=PointLightCB, b3=MaterialCB, b4=ForwardShadowCB
-//            t0=albedo, t1=roughness, t2=normal, t3=shadowMap, t4=sky(IBL), t5-t6=pointShadow
+//            t0=albedo, t1=roughness, t2=normal, t3=shadowMap, t4=sky(IBL), t5-t6=pointShadow, t7=metallic
 //            s0=sampler, s1=shadowSampler(cmp), s2=cubeSampler
 
 cbuffer TransformCB : register(b0)
@@ -46,6 +46,7 @@ Texture2D              g_shadowMap    : register(t3);
 Texture2D              g_sky          : register(t4);  // equirectangular HDR panorama
 TextureCube<float>     g_pointShadow0 : register(t5);
 TextureCube<float>     g_pointShadow1 : register(t6);
+Texture2D              g_metallic     : register(t7);  // metallic map (R channel)
 SamplerState           g_sampler      : register(s0);
 SamplerComparisonState g_shadowSampler: register(s1);
 SamplerState           g_cubeSampler  : register(s2);  // linear-clamp for point shadows
@@ -142,7 +143,8 @@ float2 DirToEnvUV(float3 dir)
 
 // IBL ambient:
 //   Diffuse  — samples the panorama at max mip in the normal direction (approximate irradiance).
-//   Specular — samples the panorama at the reflection vector so smooth surfaces mirror the sky.
+//   Specular — split-sum approximation: prefiltered env × BRDF(NdotV, roughness).
+//              BRDF term uses Lazarov 2013 analytical fit to avoid a LUT texture.
 float3 IBL(float3 N, float3 V, float3 albedo, float roughness, float metallic, float3 F0)
 {
     float NdotV = max(dot(N, V), 0.0f);
@@ -155,10 +157,18 @@ float3 IBL(float3 N, float3 V, float3 albedo, float roughness, float metallic, f
     float3 irradiance = g_sky.SampleLevel(g_sampler, DirToEnvUV(N), skyMips - 1.0f).rgb;
     float3 diffuse    = kD * (irradiance / PI) * albedo * IBLIntensity;
 
-    // Specular: roughness-scaled LOD in the reflection direction.
+    // Specular: prefiltered env at roughness-scaled LOD × split-sum BRDF approximation.
     float3 R        = reflect(-V, N);
     float3 envColor = g_sky.SampleLevel(g_sampler, DirToEnvUV(R), roughness * (skyMips - 1.0f)).rgb;
-    float3 specular = F * envColor * IBLIntensity;
+
+    // Analytical fit for the BRDF integration map (Lazarov 2013 / UE4 approach).
+    float4 c0 = float4(-1.0f, -0.0275f, -0.572f,  0.022f);
+    float4 c1 = float4( 1.0f,  0.0425f,  1.04f,  -0.04f);
+    float4 r  = roughness * c0 + c1;
+    float  a004 = min(r.x * r.x, exp2(-9.28f * NdotV)) * r.x + r.y;
+    float2 brdf = float2(-1.04f, 1.04f) * a004 + r.zw;
+
+    float3 specular = envColor * (F0 * brdf.x + brdf.y) * IBLIntensity;
 
     return diffuse + specular;
 }
@@ -179,8 +189,8 @@ float4 PS_Main(PSIn input) : SV_TARGET
     float3 V        = normalize(CameraPos - input.WorldPos);
     float4 albedo   = g_albedo.Sample(g_sampler, input.TexCoord);
     albedo.rgb     *= AlbedoTint;
-    float roughness = max(saturate(g_roughness.Sample(g_sampler, input.TexCoord).g * RoughnessScale), 0.04f);
-    float metallic  = Metallic;
+    float roughness = max(saturate(g_roughness.Sample(g_sampler, input.TexCoord).r * RoughnessScale), 0.04f);
+    float metallic  = saturate(g_metallic.Sample(g_sampler, input.TexCoord).r * Metallic);
     float3 F0       = lerp(float3(0.04f, 0.04f, 0.04f), albedo.rgb, metallic);
 
     // Directional shadow (PCF 3×3)

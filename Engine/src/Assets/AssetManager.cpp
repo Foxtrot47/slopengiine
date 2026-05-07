@@ -63,6 +63,16 @@ AssetHandle<Texture2D> AssetManager::GetDefaultWhite()
     return tex;
 }
 
+AssetHandle<Texture2D> AssetManager::GetDefaultBlack()
+{
+    if (auto h = m_defaultBlack.lock()) return h;
+    auto tex = std::make_shared<Texture2D>();
+    uint8_t px[4] = { 0, 0, 0, 255 };
+    tex->CreateFromMemory(m_device, m_context, px, 1, 1);
+    m_defaultBlack = tex;
+    return tex;
+}
+
 AssetHandle<Texture2D> AssetManager::GetDefaultNormal()
 {
     if (auto h = m_defaultNormal.lock()) return h;
