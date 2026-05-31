@@ -355,7 +355,7 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
         XMStoreFloat4x4(&cb.view,       m_view);
         XMStoreFloat4x4(&cb.projection, m_proj);
         m_transformCB.Update(ctx, cb);
-        m_transformCB.BindVS(ctx, 0);
+        m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
 
         auto& mat = (*draw.mats)[item.subMeshIndex];
         mat.albedo->BindPS(ctx, 0);
@@ -392,7 +392,7 @@ void ForwardPipeline::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
     XMStoreFloat4x4(&cb.view,       m_view);
     XMStoreFloat4x4(&cb.projection, m_proj);
     m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0);
+    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
 
     for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
     {
@@ -422,7 +422,7 @@ void ForwardPipeline::DrawSphere(ID3D11DeviceContext* ctx,
     XMStoreFloat4x4(&cb.view,       m_view);
     XMStoreFloat4x4(&cb.projection, m_proj);
     m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0);
+    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
 
     m_sphereVB.Bind(ctx);
     m_sphereIB.Bind(ctx);
@@ -451,7 +451,7 @@ void ForwardPipeline::DrawWireSphere(ID3D11DeviceContext* ctx,
     XMStoreFloat4x4(&cb.view,       m_view);
     XMStoreFloat4x4(&cb.projection, m_proj);
     m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0);
+    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
 
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
     m_wireSphereVB.Bind(ctx);
@@ -487,7 +487,7 @@ void ForwardPipeline::DrawWireAABB(ID3D11DeviceContext* ctx,
     XMStoreFloat4x4(&cb.view,       m_view);
     XMStoreFloat4x4(&cb.projection, m_proj);
     m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0);
+    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
 
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
     m_wireAABBVB.Bind(ctx);
@@ -515,7 +515,7 @@ void ForwardPipeline::DrawWireBox(ID3D11DeviceContext* ctx,
     XMStoreFloat4x4(&cb.view,       m_view);
     XMStoreFloat4x4(&cb.projection, m_proj);
     m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0);
+    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
 
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
     m_wireAABBVB.Bind(ctx);
@@ -545,7 +545,7 @@ void ForwardPipeline::DrawLine(ID3D11DeviceContext* ctx,
     XMStoreFloat4x4(&cb.view,       m_view);
     XMStoreFloat4x4(&cb.projection, m_proj);
     m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0);
+    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
 
     MeshVertex verts[2] = {};
     verts[0].x = from.x; verts[0].y = from.y; verts[0].z = from.z;
@@ -585,7 +585,7 @@ void ForwardPipeline::DrawWireDisc(ID3D11DeviceContext* ctx,
     XMStoreFloat4x4(&cb.view,       m_view);
     XMStoreFloat4x4(&cb.projection, m_proj);
     m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0);
+    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
 
     // Reuse ring 0 of the wire sphere mesh — it sits in the XZ plane (y=0).
     // 32 segments × 2 indices per line = 64 indices.
@@ -617,7 +617,7 @@ void ForwardPipeline::DrawPBRSphere(ID3D11DeviceContext* ctx,
     XMStoreFloat4x4(&cb.view,       m_view);
     XMStoreFloat4x4(&cb.projection, m_proj);
     m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0);
+    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
 
     m_sphereVB.Bind(ctx);
     m_sphereIB.Bind(ctx);
@@ -645,7 +645,7 @@ void ForwardPipeline::DrawPBRPlane(ID3D11DeviceContext* ctx,
     XMStoreFloat4x4(&cb.view,       m_view);
     XMStoreFloat4x4(&cb.projection, m_proj);
     m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0);
+    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
 
     m_planeVB.Bind(ctx);
     m_planeIB.Bind(ctx);

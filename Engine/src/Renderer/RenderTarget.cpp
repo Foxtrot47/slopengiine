@@ -4,7 +4,7 @@
 namespace SE {
 
 bool RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t height,
-                         DXGI_FORMAT format, bool withDepth)
+                         DXGI_FORMAT format, bool withDepth, bool depthReadable)
 {
     m_width  = width;
     m_height = height;
@@ -37,25 +37,51 @@ bool RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t height,
         dd.Height           = height;
         dd.MipLevels        = 1;
         dd.ArraySize        = 1;
-        dd.Format           = DXGI_FORMAT_D24_UNORM_S8_UINT;
         dd.SampleDesc.Count = 1;
         dd.Usage            = D3D11_USAGE_DEFAULT;
-        dd.BindFlags        = D3D11_BIND_DEPTH_STENCIL;
+
+        if (depthReadable)
+        {
+            // Use typeless format so we can create both DSV and SRV views.
+            dd.Format    = DXGI_FORMAT_R32_TYPELESS;
+            dd.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+        }
+        else
+        {
+            dd.Format    = DXGI_FORMAT_D24_UNORM_S8_UINT;
+            dd.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+        }
 
         hr = device->CreateTexture2D(&dd, nullptr, m_depthTex.GetAddressOf());
         if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: depth CreateTexture2D failed (0x%08X)", hr); return false; }
 
-        hr = device->CreateDepthStencilView(m_depthTex.Get(), nullptr, m_dsv.GetAddressOf());
+        D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+        dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+        dsvDesc.Format        = depthReadable ? DXGI_FORMAT_D32_FLOAT : DXGI_FORMAT_D24_UNORM_S8_UINT;
+        hr = device->CreateDepthStencilView(m_depthTex.Get(), &dsvDesc, m_dsv.GetAddressOf());
         if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: CreateDSV failed (0x%08X)", hr); return false; }
+
+        if (depthReadable)
+        {
+            D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+            srvDesc.Format                    = DXGI_FORMAT_R32_FLOAT;
+            srvDesc.ViewDimension             = D3D11_SRV_DIMENSION_TEXTURE2D;
+            srvDesc.Texture2D.MipLevels       = 1;
+            srvDesc.Texture2D.MostDetailedMip = 0;
+            hr = device->CreateShaderResourceView(m_depthTex.Get(), &srvDesc, m_depthSrv.GetAddressOf());
+            if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: depth CreateSRV failed (0x%08X)", hr); return false; }
+        }
     }
 
-    SE_LOG_INFO("RenderTarget initialised — %ux%u, format=%u, depth=%s",
-        width, height, (unsigned)format, withDepth ? "yes" : "no");
+    SE_LOG_INFO("RenderTarget initialised — %ux%u, format=%u, depth=%s%s",
+        width, height, (unsigned)format, withDepth ? "yes" : "no",
+        depthReadable ? " (readable)" : "");
     return true;
 }
 
 void RenderTarget::Shutdown()
 {
+    m_depthSrv.Reset();
     m_dsv.Reset();
     m_depthTex.Reset();
     m_srv.Reset();
@@ -106,6 +132,18 @@ void RenderTarget::BindPS(ID3D11DeviceContext* ctx, UINT slot) const
 }
 
 void RenderTarget::UnbindPS(ID3D11DeviceContext* ctx, UINT slot) const
+{
+    ID3D11ShaderResourceView* none = nullptr;
+    ctx->PSSetShaderResources(slot, 1, &none);
+}
+
+void RenderTarget::BindDepthPS(ID3D11DeviceContext* ctx, UINT slot) const
+{
+    ID3D11ShaderResourceView* srv = m_depthSrv.Get();
+    ctx->PSSetShaderResources(slot, 1, &srv);
+}
+
+void RenderTarget::UnbindDepthPS(ID3D11DeviceContext* ctx, UINT slot) const
 {
     ID3D11ShaderResourceView* none = nullptr;
     ctx->PSSetShaderResources(slot, 1, &none);

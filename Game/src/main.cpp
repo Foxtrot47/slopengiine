@@ -26,6 +26,7 @@
 #include "Engine/Renderer/ToneMap.h"
 #include "Engine/Renderer/PointShadowMap.h"
 #include "Engine/Renderer/Bloom.h"
+#include "Engine/Renderer/SSR.h"
 #include "Engine/Input/GamepadState.h"
 
 using namespace DirectX;
@@ -42,9 +43,14 @@ public:
         if (!m_pipeline.Init(device, GetAssets(), GetShaders())) return false;
         if (!m_shadowMap.Init(device, GetShaders(), 2048)) return false;
 
-        // Forward HDR render target (owns its own depth buffer)
+        // Forward HDR render target (owns its own depth buffer, depth is readable for SSR)
         if (!m_forwardHDR_RT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight(),
-                DXGI_FORMAT_R16G16B16A16_FLOAT, /*withDepth=*/true))
+                DXGI_FORMAT_R16G16B16A16_FLOAT, /*withDepth=*/true, /*depthReadable=*/true))
+            return false;
+
+        // Normal + roughness MRT target (view-space normal xyz + roughness w)
+        if (!m_normalRT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight(),
+                DXGI_FORMAT_R16G16B16A16_FLOAT))
             return false;
 
         // Tone mapping
@@ -56,6 +62,10 @@ public:
 
         // Bloom
         if (!m_bloom.Init(device, GetShaders(),
+                GetWindow().GetWidth(), GetWindow().GetHeight())) return false;
+
+        // Screen-Space Reflections
+        if (!m_ssr.Init(device, GetShaders(),
                 GetWindow().GetWidth(), GetWindow().GetHeight())) return false;
 
         // Scan available scenes
@@ -284,6 +294,7 @@ protected:
 
         XMMATRIX view = m_camera->GetViewMatrix();
         XMMATRIX proj = m_camera->GetProjectionMatrix(aspect);
+        m_cachedProj = proj;  // Store for SSR in OnPostProcess
 
         DrawUI(view, proj);
 
@@ -327,11 +338,13 @@ protected:
 
         // --- Forward path (HDR + PBR + IBL) ---
         {
-            ID3D11RenderTargetView* rtv = m_forwardHDR_RT.GetRTV();
+            ID3D11RenderTargetView* rtvs[2] = { m_forwardHDR_RT.GetRTV(), m_normalRT.GetRTV() };
             ID3D11DepthStencilView* dsv = m_forwardHDR_RT.GetDSV();
             const float black[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-            ctx->OMSetRenderTargets(1, &rtv, dsv);
-            ctx->ClearRenderTargetView(rtv, black);
+            const float clearNorm[4] = { 0.5f, 0.5f, 0.5f, 1.0f };
+            ctx->OMSetRenderTargets(2, rtvs, dsv);
+            ctx->ClearRenderTargetView(rtvs[0], black);
+            ctx->ClearRenderTargetView(rtvs[1], clearNorm);
             ctx->ClearDepthStencilView(dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
             D3D11_VIEWPORT vp = {};
             vp.Width = (float)m_forwardHDR_RT.GetWidth();
@@ -433,16 +446,29 @@ protected:
         auto* ctx = GetRenderer().GetContext();
         uint32_t w = GetWindow().GetWidth(), h = GetWindow().GetHeight();
 
-        // Resize HDR render target when the window changes size.
+        // Resize render targets when the window changes size.
         if (m_forwardHDR_RT.GetWidth() != w || m_forwardHDR_RT.GetHeight() != h)
         {
             auto* dev = GetRenderer().GetDevice();
             m_forwardHDR_RT.Shutdown();
-            m_forwardHDR_RT.Init(dev, w, h, DXGI_FORMAT_R16G16B16A16_FLOAT, true);
+            m_forwardHDR_RT.Init(dev, w, h, DXGI_FORMAT_R16G16B16A16_FLOAT, true, true);
+            m_normalRT.Shutdown();
+            m_normalRT.Init(dev, w, h, DXGI_FORMAT_R16G16B16A16_FLOAT);
             m_bloom.Resize(dev, w, h);
+            m_ssr.Resize(dev, w, h);
         }
 
         SE::RenderTarget& hdrRT = m_forwardHDR_RT;
+
+        // Unbind MRT — only need single RTV for post-process
+        {
+            ID3D11RenderTargetView* nullRTV[2] = { nullptr, nullptr };
+            ctx->OMSetRenderTargets(2, nullRTV, nullptr);
+        }
+
+        // Screen-Space Reflections (composites into hdrRT)
+        if (m_ssr.enabled)
+            m_ssr.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(), m_normalRT.GetSRV(), m_cachedProj);
 
         if (m_bloom.enabled)
             m_bloom.Apply(ctx, hdrRT);
@@ -625,6 +651,17 @@ private:
             ImGui::SliderFloat("Scatter",   &m_bloom.scatter,   0.0f, 1.0f,  "%.2f");
         }
         ImGui::Separator();
+        ImGui::Text("SSR (Reflections)");
+        ImGui::Checkbox("Enable SSR", &m_ssr.enabled);
+        if (m_ssr.enabled)
+        {
+            ImGui::SliderFloat("SSR Intensity",  &m_ssr.intensity,   0.0f, 2.0f,  "%.2f");
+            ImGui::SliderFloat("Max Distance",   &m_ssr.maxDistance,  5.0f, 10000.0f, "%.0f");
+            ImGui::SliderFloat("Thickness",      &m_ssr.thickness,   0.1f, 5.0f,  "%.2f");
+            ImGui::SliderInt("Max Steps",        &m_ssr.maxSteps,    16, 10000);
+            ImGui::SliderInt("Binary Steps",     &m_ssr.binarySteps, 0, 16);
+        }
+        ImGui::Separator();
         ImGui::SliderFloat("Shadow Bias", &m_pointShadowBias, 0.001f, 0.1f, "%.4f");
         ImGui::Separator();
         ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
@@ -756,9 +793,12 @@ private:
     bool                         m_debugShadow       = false;
     DirectX::XMMATRIX            m_meshWorld         = DirectX::XMMatrixIdentity();
     SE::RenderTarget             m_forwardHDR_RT;
+    SE::RenderTarget             m_normalRT;
     SE::ToneMap                  m_toneMap;
     SE::PointShadowMap           m_pointShadowMaps[2];
     SE::Bloom                    m_bloom;
+    SE::SSR                      m_ssr;
+    DirectX::XMMATRIX            m_cachedProj = DirectX::XMMatrixIdentity();
     bool                         m_lightCastsShadow[8] = { true };
     float                        m_pointShadowBias       = 0.015f;
     SE::PhysicsWorld::RaycastHit m_rayHit        = {};

@@ -1,0 +1,179 @@
+{
+  "name": "SSR Test — SunTemple + Showcase",
+  "mesh": {
+    "path": "Assets/Bistro/BistroExterior.fbx",
+    "transform": {
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "scale": 0.5
+    }
+  },
+  "skybox": "Assets/Bistro/san_giuseppe_bridge_4k.dds",
+  "camera": {
+    "eye": [
+      -380,
+      33,
+      -5
+    ],
+    "yaw": 90,
+    "pitch": -3,
+    "nearZ": 0.15,
+    "farZ": 4000
+  },
+  "sun": {
+    "elevation": 35.0,
+    "azimuth": -30.0,
+    "intensity": 2.0,
+    "color": [
+      1.0,
+      0.92,
+      0.80
+    ]
+  },
+  "iblIntensity": 1.2,
+  "pointLights": [],
+  "physics": {
+    "floor": {
+      "min": [
+        -20,
+        -0.1,
+        -20
+      ],
+      "max": [
+        20,
+        0,
+        20
+      ],
+      "friction": 0.6,
+      "restitution": 0.3
+    },
+    "ballSpawn": [
+      0,
+      10,
+      0
+    ],
+    "ballRadius": 0.5,
+    "characterSpawn": [
+      0,
+      2,
+      -6
+    ],
+    "gravity": true
+  },
+  "toneMapping": {
+    "operator": "ACES",
+    "exposure": 1.2,
+    "gammaCorrect": false
+  },
+  "bloom": {
+    "enabled": true,
+    "threshold": 1.2,
+    "intensity": 0.08,
+    "scatter": 0.65
+  },
+  "objects": [
+    {
+      "type": "plane",
+      "position": [
+        -340,
+        30,
+        10
+      ],
+      "halfSizeX": 12.0,
+      "halfSizeZ": 12.0,
+      "material": {
+        "albedo": "Assets/Showcase/aluminium_albedo.dds",
+        "normal": "Assets/Showcase/aluminium_normal.dds",
+        "roughness": "Assets/Showcase/aluminium_roughness.dds",
+        "metallic_map": "Assets/Showcase/aluminium_metallic.dds"
+      }
+    },
+    {
+      "type": "plane",
+      "position": [
+        -340,
+        38,
+        -5
+      ],
+      "rotation": [
+        0,
+        0,
+        -90
+      ],
+      "halfSizeX": 8.0,
+      "halfSizeZ": 12.0,
+      "material": {
+        "albedo": "Assets/Showcase/aluminium_albedo.dds",
+        "normal": "Assets/Showcase/aluminium_normal.dds",
+        "roughness": "Assets/Showcase/aluminium_roughness.dds",
+        "metallic_map": "Assets/Showcase/aluminium_metallic.dds"
+      }
+    },
+    {
+      "type": "sphere",
+      "position": [
+        -340,
+        37,
+        10
+      ],
+      "radius": 1.2,
+      "material": {
+        "albedo": "Assets/Showcase/aluminium_albedo.dds",
+        "normal": "Assets/Showcase/aluminium_normal.dds",
+        "roughness": "Assets/Showcase/aluminium_roughness.dds",
+        "metallic_map": "Assets/Showcase/aluminium_metallic.dds"
+      }
+    },
+    {
+      "type": "sphere",
+      "position": [
+        -344,
+        37,
+        10
+      ],
+      "radius": 1.2,
+      "material": {
+        "albedo": "Assets/Showcase/copper_albedo.dds",
+        "normal": "Assets/Showcase/copper_normal.dds",
+        "roughness": "Assets/Showcase/copper_roughness.dds",
+        "metallic_map": "Assets/Showcase/copper_metallic.dds"
+      }
+    },
+    {
+      "type": "sphere",
+      "position": [
+        -348,
+        37,
+        10
+      ],
+      "radius": 1.2,
+      "material": {
+        "albedo": "Assets/Showcase/marble_albedo.dds",
+        "normal": "Assets/Showcase/marble_normal.dds",
+        "roughness": "Assets/Showcase/marble_roughness.dds"
+      }
+    },
+    {
+      "type": "sphere",
+      "position": [
+        -352,
+        37,
+        10
+      ],
+      "radius": 1.2,
+      "material": {
+        "albedo": "Assets/Showcase/leather_albedo.dds",
+        "normal": "Assets/Showcase/leather_normal.dds",
+        "roughness": "Assets/Showcase/leather_arm.dds"
+      }
+    }
+  ]
+}

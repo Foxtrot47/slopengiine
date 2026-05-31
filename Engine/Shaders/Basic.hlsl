@@ -175,10 +175,21 @@ float3 IBL(float3 N, float3 V, float3 albedo, float roughness, float metallic, f
 
 // ---- PS ----
 
-float4 PS_Main(PSIn input) : SV_TARGET
+struct PSOut
 {
+    float4 color   : SV_TARGET0;
+    float4 normal  : SV_TARGET1;  // view-space normal (xyz) + roughness (w)
+};
+
+PSOut PS_Main(PSIn input)
+{
+    PSOut o;
     if (Unlit > 0.5f)
-        return float4(AlbedoTint, 1.0f);
+    {
+        o.color  = float4(AlbedoTint, 1.0f);
+        o.normal = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        return o;
+    }
 
     // Normal map → world-space N
     float2 tbn_rg = g_normal.Sample(g_sampler, input.TexCoord).rg * 2.0f - 1.0f;
@@ -246,8 +257,23 @@ float4 PS_Main(PSIn input) : SV_TARGET
                * CookTorrance(N, V, PL, albedo.rgb, roughness, metallic, F0);
     }
 
-    if (DebugShadow > 0.5f)    return float4(shadow, shadow, shadow, 1.0f);
-    if (DebugLightMode > 1.5f) return float4(NdotL,  NdotL,  NdotL,  1.0f);
+    if (DebugShadow > 0.5f)
+    {
+        o.color  = float4(shadow, shadow, shadow, 1.0f);
+        o.normal = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        return o;
+    }
+    if (DebugLightMode > 1.5f)
+    {
+        o.color  = float4(NdotL, NdotL, NdotL, 1.0f);
+        o.normal = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        return o;
+    }
 
-    return float4(color, albedo.a);
+    // Transform world-space normal to view space for SSR
+    float3 viewN = normalize(mul(N, (float3x3)View));
+
+    o.color  = float4(color, albedo.a);
+    o.normal = float4(viewN * 0.5f + 0.5f, roughness);
+    return o;
 }
