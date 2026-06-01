@@ -27,6 +27,7 @@
 #include "Engine/Renderer/PointShadowMap.h"
 #include "Engine/Renderer/Bloom.h"
 #include "Engine/Renderer/SSR.h"
+#include "Engine/Renderer/SSAO.h"
 #include "Engine/Input/GamepadState.h"
 
 using namespace DirectX;
@@ -66,6 +67,10 @@ public:
 
         // Screen-Space Reflections
         if (!m_ssr.Init(device, GetShaders(),
+                GetWindow().GetWidth(), GetWindow().GetHeight())) return false;
+
+        // Screen-Space Ambient Occlusion
+        if (!m_ssao.Init(device, GetShaders(),
                 GetWindow().GetWidth(), GetWindow().GetHeight())) return false;
 
         // Scan available scenes
@@ -456,6 +461,7 @@ protected:
             m_normalRT.Init(dev, w, h, DXGI_FORMAT_R16G16B16A16_FLOAT);
             m_bloom.Resize(dev, w, h);
             m_ssr.Resize(dev, w, h);
+            m_ssao.Resize(dev, w, h);
         }
 
         SE::RenderTarget& hdrRT = m_forwardHDR_RT;
@@ -465,6 +471,10 @@ protected:
             ID3D11RenderTargetView* nullRTV[2] = { nullptr, nullptr };
             ctx->OMSetRenderTargets(2, nullRTV, nullptr);
         }
+
+        // Screen-Space Ambient Occlusion (darkens ambient before reflections)
+        if (m_ssao.enabled)
+            m_ssao.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(), m_normalRT.GetSRV(), m_cachedProj);
 
         // Screen-Space Reflections (composites into hdrRT)
         if (m_ssr.enabled)
@@ -662,6 +672,15 @@ private:
             ImGui::SliderInt("Binary Steps",     &m_ssr.binarySteps, 0, 16);
         }
         ImGui::Separator();
+        ImGui::Text("SSAO");
+        ImGui::Checkbox("Enable SSAO", &m_ssao.enabled);
+        if (m_ssao.enabled)
+        {
+            ImGui::SliderFloat("AO Radius", &m_ssao.radius, 0.01f, 5.0f, "%.2f");
+            ImGui::SliderFloat("AO Bias",   &m_ssao.bias,   0.001f, 0.1f, "%.3f");
+            ImGui::SliderFloat("AO Power",  &m_ssao.power,  0.5f, 8.0f,   "%.1f");
+        }
+        ImGui::Separator();
         ImGui::SliderFloat("Shadow Bias", &m_pointShadowBias, 0.001f, 0.1f, "%.4f");
         ImGui::Separator();
         ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
@@ -798,6 +817,7 @@ private:
     SE::PointShadowMap           m_pointShadowMaps[2];
     SE::Bloom                    m_bloom;
     SE::SSR                      m_ssr;
+    SE::SSAO                     m_ssao;
     DirectX::XMMATRIX            m_cachedProj = DirectX::XMMatrixIdentity();
     bool                         m_lightCastsShadow[8] = { true };
     float                        m_pointShadowBias       = 0.015f;

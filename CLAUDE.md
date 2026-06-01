@@ -194,53 +194,76 @@ Milestones are numbered sequentially. The prefix letter groups them by system bu
 | M51 | ~~Bloom (dual Kawase blur)~~ ✓ |
 | M52 | ~~IBL — diffuse irradiance + specular (split-sum); sRGB pipeline; HDR panorama support~~ ✓ |
 | M52b | ~~Auto-exposure / EV calibration~~ ✓ |
+| M53 | ~~Screen-Space Reflections (view-space ray march, MRT normals, Fresnel fade)~~ ✓ |
+| M54 | ~~SSAO (Screen-Space Ambient Occlusion — HBAO or Alchemy-style)~~ ✓ |
+| M55 | Alpha blending & alpha test (cutout materials for foliage/leaves, dithered fading) |
+| M56 | Spot lights (cone angle, inner/outer falloff, shadow map) |
+| M57 | Cascaded Shadow Maps (3–4 cascades for directional light, smooth transitions) |
+| M58 | Emissive materials (emissive map, bloom contribution, HDR-correct emission) |
+| M59 | FXAA post-process (replace/complement MSAA with cheaper resolve-time AA) |
+| M60 | Volumetric fog / god rays (ray-marched atmospheric scattering, directional light shafts) |
+| M61 | Decals (deferred-style projected decals for bullet holes, blood, footprints) |
+| M62 | TAA — Temporal Anti-Aliasing (jittered projection, velocity buffer, neighborhood clamp) |
 
-### Phase 9 — Animation
-
-| # | Milestone |
-|---|---|
-| M53 | Skeleton data (bone hierarchy, bind pose, inverse bind) |
-| M54 | Animation clip (keyframes: position, rotation, scale per bone) |
-| M55 | Clip sampling + linear interpolation (lerp pos, slerp rot) |
-| M56 | Skinned mesh renderer (GPU skinning via VS + bone cbuffer) |
-| M57 | Animation state machine (states, transitions, conditions) |
-| M58 | Blend tree (1D blend, 2D directional blend) |
-| M59 | Root motion extraction |
-| M60 | Animation events (callbacks at keyframe timestamps) |
-| M61 | Import from glTF 2.0 (cgltf; replaces OBJ for complex assets) |
-
-### Phase 10 — Engine Tooling & Profiling
+### Phase 9 — Particle Systems
 
 | # | Milestone |
 |---|---|
-| M62 | ImGui integration; debug overlay, stat counters |
-| M63 | GPU timestamp queries; per-pass frame timing |
-| M64 | CPU profiler (hierarchical timers, `SE_PROFILE_SCOPE`) |
-| M65 | In-engine console (ImGui; log viewer, command dispatch) |
-| M66 | Hot-reload for HLSL shaders (watch file, recompile on change) |
+| M63 | Particle system core (CPU emitter: spawn, update, kill; ring-buffer pool) |
+| M64 | Billboard renderer (camera-facing quads, instanced draw from particle buffer) |
+| M65 | Particle affectors (gravity, wind, drag, turbulence noise, color-over-life, size-over-life) |
+| M66 | Texture atlas animation (sub-UV flipbook for fire, smoke, sparks) |
+| M67 | GPU particle simulation (compute shader update; append/consume buffers) |
+| M68 | Soft particles (depth-fade at surface intersections to remove hard edges) |
+| M69 | Lit particles (receive directional/point light, optional self-shadowing via depth) |
+| M70 | Particle trails / ribbon renderer (connected quads along velocity history) |
+| M71 | Particle system asset (serialized emitter configs; spawn bursts, looping, one-shot) |
 
-### Phase 11 — Scripting
-
-| # | Milestone |
-|---|---|
-| M67 | Lua runtime (sol2 binding) embedded in engine |
-| M68 | Expose Entity/Component API to Lua |
-| M69 | Script component; per-entity Lua update callbacks |
-| M70 | Lua-accessible input, audio, physics APIs |
-
-### Phase 12 — Editor (when engine is stable post-Phase 10)
+### Phase 10 — Animation (deferred — implement when needed by other systems)
 
 | # | Milestone |
 |---|---|
-| M71 | Editor shell — separate executable, links FoxEngine.lib, hosts an engine instance |
-| M72 | Viewport panel (render engine scene into an ImGui image) |
-| M73 | Entity hierarchy panel + component inspector |
-| M74 | Asset browser (file tree, drag-to-scene) |
-| M75 | Transform gizmos (ImGuizmo; translate, rotate, scale) |
-| M76 | Scene serialization/deserialization (JSON via nlohmann/json) |
-| M77 | Play/pause/stop in-editor (clone scene state, run physics+scripts) |
-| M78 | Undo/redo stack (command pattern) |
-| M79 | Custom renderer for editor primitives (grid, wireframe, selection highlight) |
+| M72 | Skeleton data (bone hierarchy, bind pose, inverse bind) |
+| M73 | Animation clip (keyframes: position, rotation, scale per bone) |
+| M74 | Clip sampling + linear interpolation (lerp pos, slerp rot) |
+| M75 | Skinned mesh renderer (GPU skinning via VS + bone cbuffer) |
+| M76 | Animation state machine (states, transitions, conditions) |
+| M77 | Blend tree (1D blend, 2D directional blend) |
+| M78 | Root motion extraction |
+| M79 | Animation events (callbacks at keyframe timestamps) |
+| M80 | Import from glTF 2.0 (cgltf; replaces OBJ for complex assets) |
+
+### Phase 11 — Engine Tooling & Profiling
+
+| # | Milestone |
+|---|---|
+| M81 | GPU timestamp queries; per-pass frame timing |
+| M82 | CPU profiler (hierarchical timers, `SE_PROFILE_SCOPE`) |
+| M83 | In-engine console (ImGui; log viewer, command dispatch) |
+| M84 | Hot-reload for HLSL shaders (watch file, recompile on change) |
+
+### Phase 12 — Scripting
+
+| # | Milestone |
+|---|---|
+| M85 | Lua runtime (sol2 binding) embedded in engine |
+| M86 | Expose Entity/Component API to Lua |
+| M87 | Script component; per-entity Lua update callbacks |
+| M88 | Lua-accessible input, audio, physics APIs |
+
+### Phase 13 — Editor (when engine is stable post-Phase 11)
+
+| # | Milestone |
+|---|---|
+| M89 | Editor shell — separate executable, links FoxEngine.lib, hosts an engine instance |
+| M90 | Viewport panel (render engine scene into an ImGui image) |
+| M91 | Entity hierarchy panel + component inspector |
+| M92 | Asset browser (file tree, drag-to-scene) |
+| M93 | Transform gizmos (ImGuizmo; translate, rotate, scale) |
+| M94 | Scene serialization/deserialization (JSON via nlohmann/json) |
+| M95 | Play/pause/stop in-editor (clone scene state, run physics+scripts) |
+| M96 | Undo/redo stack (command pattern) |
+| M97 | Custom renderer for editor primitives (grid, wireframe, selection highlight) |
 
 ---
 
