@@ -11,6 +11,7 @@
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Renderer/RenderQueue.h"
 #include "Engine/Renderer/Frustum.h"
+#include "Engine/Renderer/Mesh.h"
 
 namespace SE {
 
@@ -23,6 +24,8 @@ public:
         AssetHandle<Texture2D> normal;
         AssetHandle<Texture2D> roughness;
         AssetHandle<Texture2D> metallic;  // t7; nullptr → default black (0 = dielectric)
+        AlphaMode alphaMode  = AlphaMode::Opaque;
+        float     alphaCutoff = 0.5f;
     };
 
     bool Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders);
@@ -105,7 +108,7 @@ private:
     struct MaterialParamsCBData
     {
         DirectX::XMFLOAT3 albedoTint; float roughnessScale;
-        float metallic; float unlit; float debugShadow; float _pad2;
+        float metallic; float unlit; float debugShadow; float alphaCutoff;
     };
 
     // Stored per-submit for Flush() to reference.
@@ -137,6 +140,9 @@ private:
     AssetHandle<Texture2D> m_defaultWhite;
     AssetHandle<Texture2D> m_defaultBlack;
     AssetHandle<Texture2D> m_defaultNormal;
+
+    Microsoft::WRL::ComPtr<ID3D11BlendState>      m_alphaBlend;
+    Microsoft::WRL::ComPtr<ID3D11RasterizerState>  m_noCullRS;
 
     DirectX::XMMATRIX m_view = {};
     DirectX::XMMATRIX m_proj = {};

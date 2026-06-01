@@ -15,6 +15,7 @@ struct SceneDescriptor
         std::array<float, 3> position = { 0.0f, 0.0f, 0.0f };
         std::array<float, 3> rotation = { 0.0f, 0.0f, 0.0f }; // euler degrees (pitch, yaw, roll)
         float scale = 1.0f;
+        float alphaCutoff = 0.0f; // if > 0, force alpha-test on submeshes with alpha textures
     };
     MeshEntry mesh;
 

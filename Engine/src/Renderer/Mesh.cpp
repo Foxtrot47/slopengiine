@@ -3,6 +3,8 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <assimp/material.h>
+#include <assimp/GltfMaterial.h>
 #include <vector>
 
 namespace SE {
@@ -110,6 +112,33 @@ bool Mesh::Load(ID3D11Device* device, const char* path)
             sm.roughnessPath = tryGet(aiTextureType_DIFFUSE_ROUGHNESS);
             if (sm.roughnessPath.empty())
                 sm.roughnessPath = tryGet(aiTextureType_UNKNOWN);
+
+            // Alpha mode detection
+            aiString alphaStr;
+            if (mat->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaStr) == AI_SUCCESS)
+            {
+                if (strcmp(alphaStr.C_Str(), "MASK") == 0)
+                    sm.alphaMode = AlphaMode::Cutout;
+                else if (strcmp(alphaStr.C_Str(), "BLEND") == 0)
+                    sm.alphaMode = AlphaMode::Transparent;
+            }
+            else
+            {
+                // FBX fallback: if an opacity texture exists or opacity < 1, treat as cutout
+                aiString opacityTex;
+                float opacity = 1.0f;
+                mat->Get(AI_MATKEY_OPACITY, opacity);
+
+                if (mat->GetTexture(aiTextureType_OPACITY, 0, &opacityTex) == AI_SUCCESS)
+                    sm.alphaMode = AlphaMode::Cutout;
+                else if (opacity < 0.99f)
+                    sm.alphaMode = AlphaMode::Transparent;
+            }
+
+            // Alpha cutoff (glTF ALPHACUTOFF property)
+            float cutoff = 0.5f;
+            if (mat->Get(AI_MATKEY_GLTF_ALPHACUTOFF, cutoff) == AI_SUCCESS)
+                sm.alphaCutoff = cutoff;
         }
 
         m_subMeshes.push_back(std::move(sm));
@@ -140,7 +169,13 @@ void Mesh::DrawSubMesh(ID3D11DeviceContext* ctx, uint32_t index) const
 SubMeshInfo Mesh::GetSubMeshInfo(uint32_t index) const
 {
     const SubMesh& sm = m_subMeshes[index];
-    return { sm.albedoPath, sm.normalPath, sm.roughnessPath };
+    SubMeshInfo info;
+    info.albedoPath    = sm.albedoPath;
+    info.normalPath    = sm.normalPath;
+    info.roughnessPath = sm.roughnessPath;
+    info.alphaMode     = sm.alphaMode;
+    info.alphaCutoff   = sm.alphaCutoff;
+    return info;
 }
 
 } // namespace SE

@@ -2,6 +2,7 @@
   "name": "Bistro Exterior",
   "mesh": {
     "path": "Assets/Bistro/BistroExterior.fbx",
+    "alphaCutoff": 0.5,
     "transform": {
       "position": [0, 0, 0],
       "rotation": [90, 0, 0],

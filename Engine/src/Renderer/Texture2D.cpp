@@ -118,6 +118,16 @@ bool Texture2D::LoadFromDDS(ID3D11Device* device, const wchar_t* path)
     hr = device->CreateShaderResourceView(m_texture.Get(), nullptr, &m_srv);
     if (FAILED(hr)) { SE_LOG_ERROR("Texture2D: DDS CreateSRV failed: 0x%08X", hr); return false; }
 
+    // Detect if the format carries alpha data
+    m_hasAlpha = (meta.format == DXGI_FORMAT_BC3_UNORM ||
+                  meta.format == DXGI_FORMAT_BC3_UNORM_SRGB ||
+                  meta.format == DXGI_FORMAT_BC7_UNORM ||
+                  meta.format == DXGI_FORMAT_BC7_UNORM_SRGB ||
+                  meta.format == DXGI_FORMAT_R8G8B8A8_UNORM ||
+                  meta.format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB ||
+                  meta.format == DXGI_FORMAT_B8G8R8A8_UNORM ||
+                  meta.format == DXGI_FORMAT_R16G16B16A16_FLOAT);
+
     return true;
 }
 
@@ -165,6 +175,8 @@ bool Texture2D::CreateSRV(ID3D11Device* device, ID3D11DeviceContext* ctx,
     // Upload mip 0 then let the GPU generate the rest.
     ctx->UpdateSubresource(m_texture.Get(), 0, nullptr, rgba, width * 4, 0);
     ctx->GenerateMips(m_srv.Get());
+
+    m_hasAlpha = true; // RGBA8 always has alpha channel
 
     SE_LOG_INFO("Texture2D: loaded %ux%u with mip chain", width, height);
     return true;

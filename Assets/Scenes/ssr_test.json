@@ -2,6 +2,7 @@
   "name": "SSR Test — SunTemple + Showcase",
   "mesh": {
     "path": "Assets/Bistro/BistroExterior.fbx",
+    "alphaCutoff": 0.5,
     "transform": {
       "position": [
         0,

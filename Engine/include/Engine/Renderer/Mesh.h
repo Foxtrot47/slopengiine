@@ -2,6 +2,7 @@
 #include <d3d11.h>
 #include <vector>
 #include <string>
+#include <cstdint>
 #include "Engine/Renderer/VertexBuffer.h"
 #include "Engine/Renderer/IndexBuffer.h"
 #include "Engine/Physics/AABB.h"
@@ -21,11 +22,15 @@ struct MeshVertex
 
 // Per-submesh texture paths as extracted from the source file's material.
 // Paths are relative to GetDirectory(). Empty string = no texture assigned.
+enum class AlphaMode : uint8_t { Opaque, Cutout, Transparent };
+
 struct SubMeshInfo
 {
     std::string albedoPath;
     std::string normalPath;
     std::string roughnessPath;
+    AlphaMode   alphaMode = AlphaMode::Opaque;
+    float       alphaCutoff = 0.5f;
 };
 
 class Mesh
@@ -48,6 +53,8 @@ private:
         std::string  albedoPath;
         std::string  normalPath;
         std::string  roughnessPath;
+        AlphaMode    alphaMode = AlphaMode::Opaque;
+        float        alphaCutoff = 0.5f;
     };
     std::vector<SubMesh> m_subMeshes;
     std::string          m_directory;

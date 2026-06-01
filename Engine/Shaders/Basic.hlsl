@@ -29,7 +29,7 @@ cbuffer PointLightCB : register(b2)
 cbuffer MaterialCB : register(b3)
 {
     float3 AlbedoTint;  float  RoughnessScale;
-    float  Metallic;    float  Unlit;  float  DebugShadow;  float  _mat_pad;
+    float  Metallic;    float  Unlit;  float  DebugShadow;  float  AlphaCutoff;
 };
 
 cbuffer ForwardShadowCB : register(b4)
@@ -200,6 +200,11 @@ PSOut PS_Main(PSIn input)
     float3 V        = normalize(CameraPos - input.WorldPos);
     float4 albedo   = g_albedo.Sample(g_sampler, input.TexCoord);
     albedo.rgb     *= AlbedoTint;
+
+    // Alpha test (cutout): discard fragments below threshold
+    if (AlphaCutoff > 0.0f)
+        clip(albedo.a - AlphaCutoff);
+
     float roughness = max(saturate(g_roughness.Sample(g_sampler, input.TexCoord).r * RoughnessScale), 0.04f);
     float metallic  = saturate(g_metallic.Sample(g_sampler, input.TexCoord).r * Metallic);
     float3 F0       = lerp(float3(0.04f, 0.04f, 0.04f), albedo.rgb, metallic);

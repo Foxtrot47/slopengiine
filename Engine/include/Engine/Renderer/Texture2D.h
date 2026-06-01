@@ -26,6 +26,7 @@ public:
     uint32_t GetWidth()  const { return m_width; }
     uint32_t GetHeight() const { return m_height; }
     bool     IsValid()   const { return m_srv != nullptr; }
+    bool     HasAlpha()  const { return m_hasAlpha; }
 
 private:
     bool CreateSRV(ID3D11Device* device, ID3D11DeviceContext* ctx,
@@ -35,6 +36,7 @@ private:
     ComPtr<ID3D11ShaderResourceView> m_srv;
     uint32_t m_width  = 0;
     uint32_t m_height = 0;
+    bool     m_hasAlpha = false;
 };
 
 } // namespace SE

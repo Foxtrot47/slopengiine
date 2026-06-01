@@ -52,6 +52,7 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
             out.mesh.rotation = ReadFloat3(t, "rotation", out.mesh.rotation);
             if (t.contains("scale")) out.mesh.scale = t["scale"].get<float>();
         }
+        if (m.contains("alphaCutoff")) out.mesh.alphaCutoff = m["alphaCutoff"].get<float>();
     }
 
     // Skybox

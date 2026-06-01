@@ -193,6 +193,31 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLib
     m_defaultWhite  = assets.GetDefaultWhite();
     m_defaultBlack  = assets.GetDefaultBlack();
     m_defaultNormal = assets.GetDefaultNormal();
+
+    // Alpha blend state for transparent materials
+    {
+        D3D11_BLEND_DESC bd = {};
+        bd.RenderTarget[0].BlendEnable           = TRUE;
+        bd.RenderTarget[0].SrcBlend              = D3D11_BLEND_SRC_ALPHA;
+        bd.RenderTarget[0].DestBlend             = D3D11_BLEND_INV_SRC_ALPHA;
+        bd.RenderTarget[0].BlendOp               = D3D11_BLEND_OP_ADD;
+        bd.RenderTarget[0].SrcBlendAlpha         = D3D11_BLEND_ONE;
+        bd.RenderTarget[0].DestBlendAlpha        = D3D11_BLEND_ZERO;
+        bd.RenderTarget[0].BlendOpAlpha          = D3D11_BLEND_OP_ADD;
+        bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+        SE_HR(device->CreateBlendState(&bd, m_alphaBlend.GetAddressOf()));
+    }
+
+    // Two-sided rasterizer for cutout/transparent foliage
+    {
+        D3D11_RASTERIZER_DESC rd = {};
+        rd.FillMode = D3D11_FILL_SOLID;
+        rd.CullMode = D3D11_CULL_NONE;
+        rd.FrontCounterClockwise = FALSE;
+        rd.DepthClipEnable = TRUE;
+        SE_HR(device->CreateRasterizerState(&rd, m_noCullRS.GetAddressOf()));
+    }
+
     return true;
 }
 
@@ -238,7 +263,9 @@ std::vector<ForwardPipeline::SubMat> ForwardPipeline::LoadMeshMaterials(AssetMan
         mat.roughness = loadTex(info.roughnessPath);
         if (!mat.roughness) mat.roughness = assets.GetDefaultWhite();
 
-        mat.metallic  = assets.GetDefaultBlack();
+        mat.metallic    = assets.GetDefaultBlack();
+        mat.alphaMode   = info.alphaMode;
+        mat.alphaCutoff = info.alphaCutoff;
     }
 
     return mats;
@@ -334,7 +361,7 @@ void ForwardPipeline::SubmitMesh(const Mesh& mesh, DirectX::XMMATRIX model,
         item.meshIndex    = drawIdx;
         item.subMeshIndex = i;
         item.sortDepth    = depth;
-        item.transparent  = transparent;
+        item.transparent  = transparent || (mats[i].alphaMode == AlphaMode::Transparent);
         m_queue.Push(item);
     }
 }
@@ -345,6 +372,8 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
 
     m_queue.Sort();
     m_lastDrawCalls = 0;
+
+    AlphaMode prevMode = AlphaMode::Opaque;
 
     for (auto& item : m_queue.Items())
     {
@@ -358,12 +387,69 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
         m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
 
         auto& mat = (*draw.mats)[item.subMeshIndex];
+
+        // Handle alpha mode state changes
+        if (mat.alphaMode != prevMode)
+        {
+            float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            switch (mat.alphaMode)
+            {
+            case AlphaMode::Opaque:
+                ctx->OMSetBlendState(nullptr, blendFactor, 0xFFFFFFFF);
+                ctx->RSSetState(nullptr);
+                break;
+            case AlphaMode::Cutout:
+                ctx->OMSetBlendState(nullptr, blendFactor, 0xFFFFFFFF);
+                ctx->RSSetState(m_noCullRS.Get());
+                break;
+            case AlphaMode::Transparent:
+                ctx->OMSetBlendState(m_alphaBlend.Get(), blendFactor, 0xFFFFFFFF);
+                ctx->RSSetState(m_noCullRS.Get());
+                break;
+            }
+            prevMode = mat.alphaMode;
+        }
+
+        // Set alpha cutoff in material CB when needed
+        if (mat.alphaMode == AlphaMode::Cutout)
+        {
+            MaterialParamsCBData mc;
+            mc.albedoTint     = { 1.0f, 1.0f, 1.0f };
+            mc.roughnessScale = 1.0f;
+            mc.metallic       = 0.0f;
+            mc.unlit          = 0.0f;
+            mc.debugShadow    = 0.0f;
+            mc.alphaCutoff    = mat.alphaCutoff;
+            m_materialCB.Update(ctx, mc);
+            m_materialCB.BindPS(ctx, 3);
+        }
+        else if (mat.alphaMode != AlphaMode::Opaque)
+        {
+            MaterialParamsCBData mc;
+            mc.albedoTint     = { 1.0f, 1.0f, 1.0f };
+            mc.roughnessScale = 1.0f;
+            mc.metallic       = 0.0f;
+            mc.unlit          = 0.0f;
+            mc.debugShadow    = 0.0f;
+            mc.alphaCutoff    = 0.0f;
+            m_materialCB.Update(ctx, mc);
+            m_materialCB.BindPS(ctx, 3);
+        }
+
         mat.albedo->BindPS(ctx, 0);
         mat.roughness->BindPS(ctx, 1);
         mat.normal->BindPS(ctx, 2);
         (mat.metallic ? mat.metallic : m_defaultBlack)->BindPS(ctx, 7);
         draw.mesh->DrawSubMesh(ctx, item.subMeshIndex);
         ++m_lastDrawCalls;
+    }
+
+    // Restore default state
+    if (prevMode != AlphaMode::Opaque)
+    {
+        float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        ctx->OMSetBlendState(nullptr, blendFactor, 0xFFFFFFFF);
+        ctx->RSSetState(nullptr);
     }
 }
 
@@ -377,7 +463,7 @@ void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,
     mc.metallic       = metallic;
     mc.unlit          = 0.0f;
     mc.debugShadow    = debugShadow;
-    mc._pad2          = 0.0f;
+    mc.alphaCutoff    = 0.0f;
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 }

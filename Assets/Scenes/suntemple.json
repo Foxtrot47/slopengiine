@@ -2,6 +2,7 @@
   "name": "Sun Temple",
   "mesh": {
     "path": "Assets/SunTemple/SunTemple.fbx",
+    "alphaCutoff": 0.5,
     "transform": {
       "position": [0, 0, 0],
       "rotation": [0, 0, 0],

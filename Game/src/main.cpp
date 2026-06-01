@@ -119,7 +119,21 @@ public:
         {
             m_mesh = GetAssets().GetMesh(desc.mesh.path);
             if (m_mesh)
+            {
                 m_subMats = m_pipeline.LoadMeshMaterials(GetAssets(), *m_mesh);
+                // Apply scene-level alpha cutoff override
+                if (desc.mesh.alphaCutoff > 0.0f)
+                {
+                    for (auto& sm : m_subMats)
+                    {
+                        if (sm.alphaMode == SE::AlphaMode::Opaque && sm.albedo && sm.albedo->HasAlpha())
+                        {
+                            sm.alphaMode   = SE::AlphaMode::Cutout;
+                            sm.alphaCutoff = desc.mesh.alphaCutoff;
+                        }
+                    }
+                }
+            }
             else
                 SE_LOG_WARN("Failed to load mesh: %s", desc.mesh.path.c_str());
         }

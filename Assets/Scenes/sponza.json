@@ -2,6 +2,7 @@
   "name": "Sponza Atrium",
   "mesh": {
     "path": "Assets/Sponza/Sponza.gltf",
+    "alphaCutoff": 0.5,
     "transform": {
       "position": [0, 0, 0],
       "rotation": [0, 0, 0],
